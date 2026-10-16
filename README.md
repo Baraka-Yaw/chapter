@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Chapter O Wear
 
-## Getting Started
+Online shop for Chapter O Wear. Customers browse, add to a bag, and checkout sends a ready-written order to the shop's WhatsApp — no payment gateway; payment (MoMo, cash, bank) is agreed in the chat.
 
-First, run the development server:
+Layout follows wearghana.com (hero, collection tiles, shop grid with sorting, colour/size product page, side bag, size guide), with Chapter O's poster look: cream, soft gold, black, Cinzel + Jost.
+
+## Screenshots
+
+| Light | Dark |
+|---|---|
+| ![Home page, light theme](docs/screenshots/home-light.jpg) | ![Home page, dark theme](docs/screenshots/home-dark.jpg) |
+
+| Product page | Bag | Phone |
+|---|---|---|
+| ![Product page with colour and size options](docs/screenshots/product.jpg) | ![Glass bag drawer](docs/screenshots/bag.jpg) | ![Home page on a phone](docs/screenshots/mobile.jpg) |
+
+## Features
+
+- Wear Ghana–style layout: hero banner, category tiles, shop grid with sorting, product page with colour and size options, side bag
+- WhatsApp checkout: the order, delivery fee and customer details open in WhatsApp, ready to send — no payment gateway
+- Product status: in stock, pre-order or coming soon (with a "Notify me on WhatsApp" button)
+- Liquid glass UI: floating frosted header, glass bag, menus, buttons and badges, with a pointer highlight
+- Light, dark and system themes from one header icon, remembered per visitor, no flash on load
+
+## Running it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev --port 3100
+pnpm build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Swapping placeholders
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| What | Where |
+|---|---|
+| WhatsApp number, socials, notice bar | `lib/store-config.ts` |
+| Delivery zones and fees, payment options | `lib/store-config.ts` |
+| Products, prices, colourways, status (in stock / pre-order / coming soon) | `lib/products.ts` |
+| Product photos | put files in `public/products/` and set `image: "/products/<file>.jpg"` on a colourway — it replaces the drawn shirt |
+| Logo | `components/logo.tsx` (`LogoMark`) |
+| Brand colours | `app/globals.css` (`:root`) |
+| Our story, size chart | `app/our-story/page.tsx`, `app/size-guide/page.tsx` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Note: edits to `app/globals.css` don't hot-reload with the Tailwind Turbopack loader — restart `pnpm dev` to see them.
