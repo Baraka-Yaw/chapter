@@ -73,6 +73,7 @@ export async function applyMovement(
   const info = await describe(tx, v.colourwayId);
   await tx.insert(schema.inventoryMovements).values({
     productId: info?.productId ?? null,
+    colourwayId: v.colourwayId,
     productName: info?.productName ?? "Deleted product",
     colourName: info?.colourName ?? "",
     size: v.size,

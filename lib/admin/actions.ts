@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, min, notInArray } from "drizzle-orm";
+import { and, eq, min, notInArray } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { z } from "zod";
 import { PRODUCTS_TAG, toPesewas } from "../catalog";
@@ -9,6 +9,7 @@ import { applyMovement, InventoryShortage, moveOrderInventory, syncInventoryRows
 import { categories } from "../products";
 import { saveSettings as writeSettings, SETTINGS_TAG } from "../settings";
 import { settingsSchema, type ShopSettings } from "../settings-schema";
+import { getVariantMovements } from "./inventory-queries";
 import { productInput, publishProblem, type ProductInput } from "./product-schema";
 import { orderStatuses } from "./order-status";
 import { requireAdmin } from "./session";
@@ -164,51 +165,77 @@ export async function deleteProduct(id: string): Promise<ActionResult> {
 
 // ---------- Inventory ----------
 
-const inventoryInput = z.object({
-  productId: z.string().uuid(),
-  // "receive" adds new pieces; "count" sets what's actually on the shelf.
-  mode: z.enum(["receive", "count"]),
+const variantId = z.string().uuid();
+
+async function variantFor(inventoryId: string) {
+  const [row] = await db
+    .select({ colourwayId: schema.inventory.colourwayId, size: schema.inventory.size, quantity: schema.inventory.quantity })
+    .from(schema.inventory)
+    .where(eq(schema.inventory.id, inventoryId));
+  return row;
+}
+
+const restockInput = z.object({
+  inventoryId: variantId,
+  quantity: z.number().int().min(1, "Enter how many pieces arrived").max(10_000),
+  reference: z.string().trim().max(60),
   note: z.string().trim().max(200),
-  entries: z
-    .array(z.object({ colourKey: z.string().max(60), size: z.string().max(12), quantity: z.number().int().min(0).max(10_000) }))
-    .max(200),
 });
 
-export async function updateInventory(input: z.infer<typeof inventoryInput>): Promise<ActionResult<{ changed: number }>> {
+// New pieces arrived for one variant.
+export async function restockVariant(input: z.infer<typeof restockInput>): Promise<ActionResult<{ quantity: number }>> {
   await requireAdmin();
-  const parsed = inventoryInput.safeParse(input);
+  const parsed = restockInput.safeParse(input);
   if (!parsed.success) return firstIssue(parsed.error);
-  const { productId, mode, note, entries } = parsed.data;
-  if (mode === "count" && !note) return { ok: false, error: "Say why the counts changed, e.g. “Stock count” or “2 damaged”.", field: "note" };
+  const { inventoryId, quantity, reference, note } = parsed.data;
+  const v = await variantFor(inventoryId);
+  if (!v) return { ok: false, error: "This size no longer exists." };
+  const after = await db.transaction((tx) =>
+    applyMovement(tx, {
+      colourwayId: v.colourwayId,
+      size: v.size,
+      change: quantity,
+      reason: "restock",
+      note: [reference && `Ref ${reference}`, note].filter(Boolean).join(" · "),
+    }),
+  );
+  updateTag(PRODUCTS_TAG);
+  return { ok: true, data: { quantity: after } };
+}
 
-  const changed = await db.transaction(async (tx) => {
-    const [product] = await tx
-      .select({ trackInventory: schema.products.trackInventory, sizes: schema.products.sizes })
-      .from(schema.products)
-      .where(eq(schema.products.id, productId));
-    if (!product?.trackInventory) return -1;
-    const cws = await tx
-      .select({ id: schema.colourways.id, key: schema.colourways.key })
-      .from(schema.colourways)
-      .where(eq(schema.colourways.productId, productId));
-    const current = await tx.select().from(schema.inventory).where(inArray(schema.inventory.colourwayId, cws.map((c) => c.id)));
+const adjustInput = z.object({
+  inventoryId: variantId,
+  type: z.enum(["increase", "decrease", "set"]),
+  quantity: z.number().int().min(0).max(10_000),
+  note: z.string().trim().min(3, "Explain the change, e.g. “2 damaged” or “Stock count”").max(200),
+});
 
-    let n = 0;
-    for (const e of entries) {
-      const cw = cws.find((c) => c.key === e.colourKey);
-      if (!cw || !product.sizes.includes(e.size)) continue;
-      const now = current.find((r) => r.colourwayId === cw.id && r.size === e.size)?.quantity ?? 0;
-      const change = mode === "receive" ? e.quantity : e.quantity - now;
-      if (change === 0) continue;
-      await applyMovement(tx, { colourwayId: cw.id, size: e.size, change, reason: mode === "receive" ? "restock" : "adjust", note });
-      n++;
-    }
-    return n;
-  });
+// Corrections: found extra pieces, damaged or given away, or a stock count.
+export async function adjustVariant(input: z.infer<typeof adjustInput>): Promise<ActionResult<{ quantity: number }>> {
+  await requireAdmin();
+  const parsed = adjustInput.safeParse(input);
+  if (!parsed.success) return firstIssue(parsed.error);
+  const { inventoryId, type, quantity, note } = parsed.data;
+  const v = await variantFor(inventoryId);
+  if (!v) return { ok: false, error: "This size no longer exists." };
+  const change = type === "increase" ? quantity : type === "decrease" ? -quantity : quantity - v.quantity;
+  if (change === 0) return { ok: false, error: type === "set" ? `It's already ${v.quantity}.` : "Enter a quantity." };
+  try {
+    const after = await db.transaction((tx) =>
+      applyMovement(tx, { colourwayId: v.colourwayId, size: v.size, change, reason: "adjust", note }),
+    );
+    updateTag(PRODUCTS_TAG);
+    return { ok: true, data: { quantity: after } };
+  } catch (e) {
+    if (e instanceof InventoryShortage) return { ok: false, error: `You can't remove more than the ${e.available} in stock.` };
+    throw e;
+  }
+}
 
-  if (changed === -1) return { ok: false, error: "Turn on “Track inventory” for this product first." };
-  if (changed > 0) updateTag(PRODUCTS_TAG);
-  return { ok: true, data: { changed } };
+export async function loadVariantMovements(inventoryId: string) {
+  await requireAdmin();
+  if (!variantId.safeParse(inventoryId).success) return [];
+  return getVariantMovements(inventoryId);
 }
 
 // ---------- Settings ----------

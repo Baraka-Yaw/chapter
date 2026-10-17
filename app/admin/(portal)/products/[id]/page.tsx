@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { InventoryPanel } from "@/components/admin/inventory-panel";
+import { InventoryTable } from "@/components/admin/inventory-table";
 import { ProductForm } from "@/components/admin/product-form";
-import { PageHeader } from "@/components/admin/ui";
-import { getInventoryHistory } from "@/lib/admin/queries";
+import { Card, PageHeader } from "@/components/admin/ui";
+import { listInventory } from "@/lib/admin/inventory-queries";
 import { requireAdmin, uploadsEnabled } from "@/lib/admin/session";
 import { loadAllProducts } from "@/lib/catalog";
 
@@ -18,7 +18,8 @@ export default async function EditProductPage({ params, searchParams }: PageProp
   const [{ id }, { saved }] = await Promise.all([params, searchParams]);
   const product = (await loadAllProducts()).find((p) => p.id === id);
   if (!product) notFound();
-  const history = product.trackInventory ? await getInventoryHistory(product.id, 15) : [];
+  const inventory = product.trackInventory ? await listInventory({ productId: product.id, pageSize: 200 }) : null;
+  const pieces = inventory?.variants.reduce((n, v) => n + v.quantity, 0) ?? 0;
 
   return (
     <>
@@ -30,7 +31,26 @@ export default async function EditProductPage({ params, searchParams }: PageProp
         title={product.name}
       />
       <ProductForm product={product} uploadsEnabled={uploadsEnabled()} />
-      {product.trackInventory && <InventoryPanel product={product} history={history} />}
+      {inventory && (
+        <Card className="mt-6 p-0! sm:p-0!">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink/10 p-5">
+            <div>
+              <h2 className="font-display text-xl">Inventory</h2>
+              <p className="text-sm text-ink-soft">
+                {pieces} piece{pieces === 1 ? "" : "s"} available across {inventory.total} variant{inventory.total === 1 ? "" : "s"}
+              </p>
+            </div>
+            <Link href={`/admin/inventory?q=${encodeURIComponent(product.name)}`} className="text-sm text-ink-soft underline">
+              Open in Inventory
+            </Link>
+          </div>
+          {inventory.total === 0 ? (
+            <p className="p-5 text-sm text-ink-soft">Add colours and sizes, then save, to start counting inventory.</p>
+          ) : (
+            <InventoryTable variants={inventory.variants} showProduct={false} />
+          )}
+        </Card>
+      )}
     </>
   );
 }

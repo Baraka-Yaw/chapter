@@ -68,6 +68,7 @@ async function main() {
           if (quantity > 0) {
             await db.insert(schema.inventoryMovements).values({
               productId: row.id,
+              colourwayId: cw.id,
               productName: p.name,
               colourName: cw.name,
               size,

@@ -78,18 +78,6 @@ export async function getOrder(ref: string) {
   return row;
 }
 
-export type InventoryMovement = typeof schema.inventoryMovements.$inferSelect;
-
-export async function getInventoryHistory(productId?: string, limit = 15) {
-  const m = schema.inventoryMovements;
-  return db
-    .select()
-    .from(m)
-    .where(productId ? eq(m.productId, productId) : undefined)
-    .orderBy(desc(m.createdAt), desc(m.id))
-    .limit(limit);
-}
-
 // Sizes of published, tracked products at or below the "running low" mark (0 = sold out).
 export async function getLowInventory(threshold: number) {
   return db

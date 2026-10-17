@@ -33,7 +33,7 @@ export default async function DashboardPage() {
       label: "Low inventory",
       value: String(low.length),
       hint: low.length === 0 ? "Every tracked size is in stock" : `${soldOut} sold out · ${low.length - soldOut} running low`,
-      href: "/admin/inventory?show=low",
+      href: "/admin/inventory?level=low",
     },
   ];
 

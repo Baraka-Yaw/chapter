@@ -1,137 +1,174 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Card, EmptyState, formatDate, PageHeader } from "@/components/admin/ui";
-import { ProductArt } from "@/components/product-art";
-import { getInventoryHistory } from "@/lib/admin/queries";
+import { Suspense } from "react";
+import { InventoryFilters } from "@/components/admin/inventory-filters";
+import { InventoryTable } from "@/components/admin/inventory-table";
+import { Card, EmptyState } from "@/components/admin/ui";
+import { Pagination } from "@/components/pagination";
+import {
+  getInventoryTotals,
+  inventorySorts,
+  listInventory,
+  stockLevels,
+  type InventorySort,
+  type StockLevel,
+} from "@/lib/admin/inventory-queries";
 import { requireAdmin } from "@/lib/admin/session";
-import { loadAllProducts } from "@/lib/catalog";
-import { LOW_INVENTORY, type Product } from "@/lib/products";
+import { money } from "@/lib/format";
 
 // Private per-request page; navigation may wait for the server (see the admin layout).
 export const instant = false;
 
 export const metadata: Metadata = { title: "Inventory" };
 
-const reasonLabel = { order: "Order", cancel: "Order cancelled", reopen: "Order reopened", restock: "Received", adjust: "Corrected" } as const;
-
-function lowSizes(p: Product) {
-  return p.colourways.flatMap((c) =>
-    p.sizes.flatMap((s) => {
-      const n = c.inventory?.[s] ?? 0;
-      return n <= LOW_INVENTORY ? [{ colour: c.name, size: s, n }] : [];
-    }),
-  );
-}
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 export default async function InventoryPage({ searchParams }: PageProps<"/admin/inventory">) {
   await requireAdmin();
-  const lowOnly = (await searchParams).show === "low";
-  const [all, history] = await Promise.all([loadAllProducts(), getInventoryHistory(undefined, 25)]);
-  const tracked = all.filter((p) => p.trackInventory);
-  const lowCount = tracked.reduce((n, p) => n + lowSizes(p).length, 0);
-  const shown = lowOnly ? tracked.filter((p) => lowSizes(p).length > 0) : tracked;
+  const sp = await searchParams;
+  const level = stockLevels.includes(one(sp.level) as StockLevel) ? (one(sp.level) as StockLevel) : "all";
+  const sort = inventorySorts.includes(one(sp.sort) as InventorySort) ? (one(sp.sort) as InventorySort) : "name";
+  const status = one(sp.status) === "published" || one(sp.status) === "draft" ? (one(sp.status) as "published" | "draft") : "all";
+  const q = one(sp.q) ?? "";
+  const page = Math.max(1, Number(one(sp.page)) || 1);
+
+  const [totals, list] = await Promise.all([getInventoryTotals(), listInventory({ q, level, status, sort, page })]);
+  const filtered = q !== "" || level !== "all" || status !== "all";
+
+  const pageHref = (p: number) => {
+    const next = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q, level: level === "all" ? "" : level, status: status === "all" ? "" : status, sort: sort === "name" ? "" : sort })) {
+      if (v) next.set(k, v);
+    }
+    if (p > 1) next.set("page", String(p));
+    const qs = next.toString();
+    return qs ? `/admin/inventory?${qs}` : "/admin/inventory";
+  };
+
+  const pills = [
+    { label: "Available", value: totals.available, dot: "bg-[#1f7a4d]" },
+    { label: "In open orders", value: totals.reserved, dot: "bg-[#d4a72c]" },
+    { label: "Delivered", value: totals.sold, dot: "bg-[#2f6fd6]" },
+    { label: "Low or out", value: totals.low + totals.out, dot: "bg-[#c8402f]" },
+  ];
+
+  const cards = [
+    { label: "Total pieces (incl. delivered)", value: (totals.available + totals.reserved + totals.sold).toLocaleString(), tone: "text-ink", icon: "box" },
+    { label: "Available", value: totals.available.toLocaleString(), tone: "text-[#1f7a4d]", icon: "check" },
+    { label: "In open orders", value: totals.reserved.toLocaleString(), tone: "text-[#b58a1b]", icon: "clock" },
+    { label: "Low stock / out of stock", value: `${totals.low} / ${totals.out}`, tone: "text-[#c8402f]", icon: "alert", href: "/admin/inventory?level=low" },
+    { label: "Stock value", value: money(totals.valuePesewas / 100), tone: "text-ink", icon: "value" },
+  ];
 
   return (
     <>
-      <PageHeader eyebrow="Catalogue" title="Inventory" />
-
-      <nav className="mb-6 flex gap-2" aria-label="Filter inventory">
-        <Tab href="/admin/inventory" active={!lowOnly} label="All tracked" count={tracked.length} />
-        <Tab href="/admin/inventory?show=low" active={lowOnly} label="Running low" count={lowCount} />
-      </nav>
-
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <Card className="p-0! sm:p-0!">
-          {tracked.length === 0 ? (
-            <EmptyState
-              title="No products track inventory yet"
-              body="Open a product, switch on “Track inventory”, save, then add pieces with “Receive inventory”."
-              href="/admin/products"
-              cta="Go to products"
-            />
-          ) : shown.length === 0 ? (
-            <EmptyState title="Nothing running low" body={`Every tracked size has more than ${LOW_INVENTORY} pieces.`} />
-          ) : (
-            <ul className="divide-y divide-ink/10">
-              {shown.map((p) => {
-                const total = p.colourways.reduce((n, c) => n + p.sizes.reduce((m, s) => m + (c.inventory?.[s] ?? 0), 0), 0);
-                const low = lowSizes(p);
-                return (
-                  <li key={p.id}>
-                    <Link href={`/admin/products/${p.id}`} className="flex items-start gap-4 px-4 py-4 hover:bg-ink/4 sm:px-5">
-                      <div className="w-12 shrink-0 overflow-hidden rounded-lg">
-                        {p.colourways[0] ? <ProductArt pattern={p.pattern} colourway={p.colourways[0]} /> : <div className="aspect-[5/6] bg-cream-deep" />}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <span className="font-medium">
-                            {p.name}
-                            {p.draft && <span className="ml-2 text-xs text-ink-soft">(draft)</span>}
-                          </span>
-                          <span className="text-sm text-ink-soft">
-                            {total} piece{total === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                        {low.length > 0 ? (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {low.map((l) => (
-                              <span
-                                key={`${l.colour}-${l.size}`}
-                                className={`rounded-full px-2 py-0.5 text-xs ${l.n === 0 ? "bg-[#c8402f]/12 text-[#c8402f]" : "bg-gold/20 text-gold-deep"}`}
-                              >
-                                {l.colour} · {l.size}: {l.n === 0 ? "sold out" : `${l.n} left`}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="mt-1 text-xs text-ink-soft">All sizes in stock</p>
-                        )}
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
-
-        <Card className="h-fit">
-          <h2 className="mb-3 font-display text-xl">Recent changes</h2>
-          {history.length === 0 ? (
-            <p className="text-sm text-ink-soft">No inventory changes yet.</p>
-          ) : (
-            <ul className="divide-y divide-ink/10 text-sm">
-              {history.map((m) => (
-                <li key={m.id} className="flex gap-3 py-2">
-                  <span className={`w-10 shrink-0 font-medium ${m.change > 0 ? "text-[#1f7a4d]" : "text-[#c8402f]"}`}>
-                    {m.change > 0 ? `+${m.change}` : m.change}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate">{m.productName}</p>
-                    <p className="text-xs text-ink-soft">
-                      {m.colourName} · {m.size} · {reasonLabel[m.reason]}
-                      {m.orderRef ? ` ${m.orderRef}` : ""} · {formatDate(m.createdAt)}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <h1 className="font-display text-3xl sm:text-4xl">Inventory</h1>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {pills.map((p) => (
+              <li key={p.label} className="flex items-center gap-1.5">
+                <span className={`h-2 w-2 rounded-full ${p.dot}`} />
+                <span className="font-medium tabular-nums">{p.value.toLocaleString()}</span>
+                <span className="text-ink-soft">{p.label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Link href="/admin/products" className="btn glass px-4! py-2!">
+          Manage products
+        </Link>
       </div>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {cards.map((c) => {
+          const body = (
+            <>
+              <div>
+                <p className="text-xs text-ink-soft">{c.label}</p>
+                <p className={`mt-1 text-2xl font-medium tabular-nums ${c.tone}`}>{c.value}</p>
+              </div>
+              <StatIcon name={c.icon} />
+            </>
+          );
+          // The fifth card fills its row on two-column phones and tablets.
+          const cls = "glass glass-thick flex items-start justify-between gap-3 rounded-[1.25rem] p-4 last:sm:col-span-2 last:lg:col-span-1";
+          return c.href ? (
+            <Link key={c.label} href={c.href} className={`${cls} transition hover:-translate-y-0.5`}>
+              {body}
+            </Link>
+          ) : (
+            <div key={c.label} className={cls}>
+              {body}
+            </div>
+          );
+        })}
+      </div>
+
+      <Card className="p-0! sm:p-0!">
+        <div className="space-y-3 border-b border-ink/10 p-4 sm:p-5">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-medium">
+              Variants <span className="text-ink-soft">({list.total})</span>
+            </h2>
+            {filtered && (
+              <Link href="/admin/inventory" className="text-xs text-ink-soft underline">
+                Clear filters
+              </Link>
+            )}
+          </div>
+          <Suspense>
+            <InventoryFilters />
+          </Suspense>
+        </div>
+        {totals.variants === 0 ? (
+          <EmptyState
+            title="No products track inventory yet"
+            body="Open a product, switch on “Track inventory” and save. Its colours and sizes appear here, ready to restock."
+            href="/admin/products"
+            cta="Go to products"
+          />
+        ) : list.variants.length === 0 ? (
+          <EmptyState title="Nothing matches" body="Try another search or clear the filters." />
+        ) : (
+          <InventoryTable variants={list.variants} />
+        )}
+      </Card>
+      <Pagination page={list.page} pageCount={list.pageCount} href={pageHref} />
     </>
   );
 }
 
-function Tab({ href, active, label, count }: { href: string; active: boolean; label: string; count: number }) {
+function StatIcon({ name }: { name: string }) {
+  const paths: Record<string, React.ReactNode> = {
+    box: <path d="M21 8l-9-5-9 5v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8" />,
+    check: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M8 12l3 3 5-6" />
+      </>
+    ),
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
+    alert: <path d="M12 3l10 18H2L12 3zM12 10v4M12 17h0" />,
+    value: <path d="M4 7h16v10H4zM8 12h0M16 12h0M12 9a3 3 0 100 6 3 3 0 000-6z" />,
+  };
+  const tone: Record<string, string> = {
+    box: "bg-ink/6 text-ink-soft",
+    check: "bg-[#1f7a4d]/10 text-[#1f7a4d]",
+    clock: "bg-[#d4a72c]/15 text-[#b58a1b]",
+    alert: "bg-[#c8402f]/10 text-[#c8402f]",
+    value: "bg-gold/15 text-gold-deep",
+  };
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm transition ${active ? "bg-ink text-cream" : "glass"}`}
-    >
-      {label}
-      <span className={`rounded-full px-1.5 text-xs ${active ? "bg-cream/20" : "bg-ink/8"}`}>{count}</span>
-    </Link>
+    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tone[name]}`}>
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {paths[name]}
+      </svg>
+    </span>
   );
 }

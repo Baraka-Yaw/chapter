@@ -81,6 +81,8 @@ export const inventoryMovements = pgTable(
   {
     id: serial().primaryKey(),
     productId: uuid().references(() => products.id, { onDelete: "set null" }),
+    // The variant (colour) this change was for; history per colour × size filters on this and size.
+    colourwayId: uuid().references(() => colourways.id, { onDelete: "set null" }),
     productName: text().notNull(),
     colourName: text().notNull(),
     size: text().notNull(),
@@ -92,7 +94,7 @@ export const inventoryMovements = pgTable(
     note: text().notNull().default(""),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index().on(t.productId, t.createdAt), index().on(t.createdAt)],
+  (t) => [index().on(t.productId, t.createdAt), index().on(t.colourwayId, t.size, t.createdAt), index().on(t.createdAt)],
 );
 
 export type OrderItem = {
