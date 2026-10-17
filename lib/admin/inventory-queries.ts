@@ -170,3 +170,16 @@ export async function getVariantMovements(inventoryId: string, limit = 50) {
     .orderBy(desc(m.createdAt), desc(m.id))
     .limit(limit);
 }
+
+// Products that match a search but don't track inventory, so the page can offer to start.
+export async function findUntracked(q: string) {
+  const term = q.trim();
+  if (!term) return [];
+  const like = `%${term.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+  return db
+    .select({ id: schema.products.id, name: schema.products.name, published: schema.products.published, status: schema.products.status })
+    .from(schema.products)
+    .where(and(eq(schema.products.trackInventory, false), sql`${schema.products.name} ilike ${like}`))
+    .orderBy(schema.products.name)
+    .limit(10);
+}

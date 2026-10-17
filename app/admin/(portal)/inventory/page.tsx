@@ -3,9 +3,11 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { InventoryFilters } from "@/components/admin/inventory-filters";
 import { InventoryTable } from "@/components/admin/inventory-table";
+import { StartTrackingButton } from "@/components/admin/start-tracking-button";
 import { Card, EmptyState } from "@/components/admin/ui";
 import { Pagination } from "@/components/pagination";
 import {
+  findUntracked,
   getInventoryTotals,
   inventorySorts,
   listInventory,
@@ -15,6 +17,7 @@ import {
 } from "@/lib/admin/inventory-queries";
 import { requireAdmin } from "@/lib/admin/session";
 import { money } from "@/lib/format";
+import { statusLabel } from "@/lib/products";
 
 // Private per-request page; navigation may wait for the server (see the admin layout).
 export const instant = false;
@@ -32,7 +35,11 @@ export default async function InventoryPage({ searchParams }: PageProps<"/admin/
   const q = one(sp.q) ?? "";
   const page = Math.max(1, Number(one(sp.page)) || 1);
 
-  const [totals, list] = await Promise.all([getInventoryTotals(), listInventory({ q, level, status, sort, page })]);
+  const [totals, list, untracked] = await Promise.all([
+    getInventoryTotals(),
+    listInventory({ q, level, status, sort, page }),
+    findUntracked(q),
+  ]);
   const filtered = q !== "" || level !== "all" || status !== "all";
 
   const pageHref = (p: number) => {
@@ -121,6 +128,29 @@ export default async function InventoryPage({ searchParams }: PageProps<"/admin/
             <InventoryFilters />
           </Suspense>
         </div>
+        {untracked.length > 0 && (
+          <div className="border-b border-ink/10 bg-gold/8 px-4 py-3 sm:px-5">
+            <p className="mb-2 text-sm">
+              {untracked.length === 1 ? "This product matches" : "These products match"} but {untracked.length === 1 ? "doesn't" : "don't"}{" "}
+              track inventory yet — customers can always order {untracked.length === 1 ? "it" : "them"}.
+            </p>
+            <ul className="divide-y divide-ink/8">
+              {untracked.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                  <Link href={`/admin/products/${p.id}`} className="min-w-0 text-sm hover:underline">
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-ink-soft">
+                      {" "}
+                      · {statusLabel[p.status]}
+                      {!p.published && " · Draft"}
+                    </span>
+                  </Link>
+                  <StartTrackingButton productId={p.id} name={p.name} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {totals.variants === 0 ? (
           <EmptyState
             title="No products track inventory yet"
@@ -129,7 +159,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/admin/
             cta="Go to products"
           />
         ) : list.variants.length === 0 ? (
-          <EmptyState title="Nothing matches" body="Try another search or clear the filters." />
+          untracked.length > 0 ? null : <EmptyState title="Nothing matches" body="Try another search or clear the filters." />
         ) : (
           <InventoryTable variants={list.variants} />
         )}

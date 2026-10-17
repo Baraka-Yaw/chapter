@@ -232,6 +232,25 @@ export async function adjustVariant(input: z.infer<typeof adjustInput>): Promise
   }
 }
 
+// Turns on inventory for a product from the Inventory page; every colour × size starts at 0.
+export async function startTracking(productId: string): Promise<ActionResult> {
+  await requireAdmin();
+  if (!variantId.safeParse(productId).success) return { ok: false, error: "Product not found" };
+  const done = await db.transaction(async (tx) => {
+    const [p] = await tx
+      .update(schema.products)
+      .set({ trackInventory: true })
+      .where(eq(schema.products.id, productId))
+      .returning({ sizes: schema.products.sizes });
+    if (!p) return false;
+    await syncInventoryRows(tx, productId, p.sizes);
+    return true;
+  });
+  if (!done) return { ok: false, error: "Product not found" };
+  updateTag(PRODUCTS_TAG);
+  return { ok: true };
+}
+
 export async function loadVariantMovements(inventoryId: string) {
   await requireAdmin();
   if (!variantId.safeParse(inventoryId).success) return [];

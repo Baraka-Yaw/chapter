@@ -55,16 +55,22 @@ export function getCategory(slug: string) {
 // "Only 2 left" shows at or below this many pieces.
 export const LOW_INVENTORY = 2;
 
-// Pieces left in a size, or null when the product doesn't track inventory.
+// Inventory limits what customers can buy only for released products; coming-soon shirts
+// can't be ordered yet, so their (often zero) counts must not show them as sold out.
+function inventoryApplies(p: Product) {
+  return !!p.trackInventory && p.status !== "coming-soon";
+}
+
+// Pieces left in a size, or null when inventory doesn't apply.
 export function piecesLeft(p: Product, c: Colourway, size: string): number | null {
-  if (!p.trackInventory) return null;
+  if (!inventoryApplies(p)) return null;
   return c.inventory?.[size] ?? 0;
 }
 
 // Sold out by hand, or every size of a tracked colour is at zero.
 export function colourSoldOut(p: Product, c: Colourway) {
   if (c.soldOut) return true;
-  return !!p.trackInventory && p.sizes.every((s) => (c.inventory?.[s] ?? 0) <= 0);
+  return inventoryApplies(p) && p.sizes.every((s) => (c.inventory?.[s] ?? 0) <= 0);
 }
 
 export function productSoldOut(p: Product) {
