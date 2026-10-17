@@ -17,7 +17,7 @@ export function toPesewas(cedis: number) {
   return Math.round(cedis * 100);
 }
 
-function toColourway(c: ColourwayRow): Colourway {
+function toColourway(c: ColourwayRow, inventory?: Record<string, number>): Colourway {
   return {
     id: c.key,
     name: c.name,
@@ -27,10 +27,11 @@ function toColourway(c: ColourwayRow): Colourway {
     palette: c.palette,
     image: c.image ?? undefined,
     soldOut: c.soldOut || undefined,
+    inventory,
   };
 }
 
-function toProduct(p: ProductRow, cws: ColourwayRow[]): Product {
+function toProduct(p: ProductRow, cws: ColourwayRow[], stock: Map<string, Record<string, number>>): Product {
   return {
     id: p.id,
     slug: p.slug,
@@ -42,23 +43,27 @@ function toProduct(p: ProductRow, cws: ColourwayRow[]): Product {
     description: p.description,
     details: p.details,
     sizes: p.sizes,
-    colourways: cws.map(toColourway),
+    colourways: cws.map((c) => toColourway(c, p.trackInventory ? (stock.get(c.id) ?? {}) : undefined)),
     featured: p.featured || undefined,
     draft: !p.published || undefined,
+    trackInventory: p.trackInventory || undefined,
     createdAt: p.createdAt.toISOString().slice(0, 10),
   };
 }
 
 // Every product with its colourways, in shop order. Not cached: the admin needs fresh data.
 export async function loadAllProducts(): Promise<Product[]> {
-  const [rows, cws] = await Promise.all([
+  const [rows, cws, inv] = await Promise.all([
     db.select().from(schema.products).orderBy(asc(schema.products.position), desc(schema.products.createdAt)),
     db.select().from(schema.colourways).orderBy(asc(schema.colourways.position)),
+    db.select().from(schema.inventory),
   ]);
+  const stock = new Map<string, Record<string, number>>();
+  for (const i of inv) stock.set(i.colourwayId, { ...stock.get(i.colourwayId), [i.size]: i.quantity });
   const byProduct = new Map<string, ColourwayRow[]>();
   for (const c of cws) byProduct.set(c.productId, [...(byProduct.get(c.productId) ?? []), c]);
   // Products without a colourway can't be bought or drawn, so they stay out of the shop.
-  return rows.map((r) => toProduct(r, byProduct.get(r.id) ?? []));
+  return rows.map((r) => toProduct(r, byProduct.get(r.id) ?? [], stock));
 }
 
 // What the shop shows: published products that have at least one colourway. Cached until the admin edits.

@@ -89,14 +89,14 @@ export function CartDrawer() {
   );
 }
 
-export function QtyStepper({ value, onChange }: { value: number; onChange: (qty: number) => void }) {
+export function QtyStepper({ value, onChange, max = 20 }: { value: number; onChange: (qty: number) => void; max?: number }) {
   return (
     <div className="glass flex items-center rounded-full">
       <button type="button" className="h-8 w-8" onClick={() => onChange(value - 1)} aria-label="Decrease quantity" disabled={value <= 1}>
         −
       </button>
       <span className="w-7 text-center text-sm" aria-live="polite">{value}</span>
-      <button type="button" className="h-8 w-8" onClick={() => onChange(value + 1)} aria-label="Increase quantity">
+      <button type="button" className="h-8 w-8" onClick={() => onChange(value + 1)} aria-label="Increase quantity" disabled={value >= max}>
         +
       </button>
     </div>

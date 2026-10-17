@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { priceLabel } from "@/lib/format";
-import { onSale, priceRange, statusLabel, type Product } from "@/lib/products";
+import { onSale, priceRange, productSoldOut, statusLabel, type Product } from "@/lib/products";
 import { ProductArt } from "./product-art";
 
 export function ProductCard({ product, priority = false }: { product: Product; priority?: boolean }) {
@@ -14,6 +14,9 @@ export function ProductCard({ product, priority = false }: { product: Product; p
             <span className={`rounded-full px-2.5 py-1 text-[0.62rem] tracking-[0.2em] uppercase ${product.status === "preorder" ? "glass glass-light" : "glass glass-light text-[#96773f]!"}`}>
               {statusLabel[product.status]}
             </span>
+          )}
+          {productSoldOut(product) && (
+            <span className="rounded-full bg-ink/80 px-2.5 py-1 text-[0.62rem] tracking-[0.2em] text-white uppercase backdrop-blur">Sold out</span>
           )}
           {sale && <span className="rounded-full bg-[#c8402f]/85 px-2.5 py-1 text-[0.62rem] tracking-[0.2em] text-white uppercase backdrop-blur">Sale</span>}
         </div>

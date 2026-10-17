@@ -2,9 +2,11 @@
 
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { getShopProducts, toCedis, toPesewas } from "./catalog";
+import { updateTag } from "next/cache";
+import { getShopProducts, PRODUCTS_TAG, toCedis, toPesewas } from "./catalog";
 import { db, schema } from "./db";
 import type { OrderItem } from "./db/schema";
+import { InventoryShortage, takeForOrder } from "./inventory";
 import { effectivePrice } from "./products";
 import { getSettings } from "./settings";
 import { orderMessage, waLink } from "./whatsapp";
@@ -90,14 +92,32 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     totalPesewas: subtotalPesewas + deliveryPesewas,
   };
 
-  // A reference clash is astronomically unlikely, but retry once rather than fail the customer.
+  // The order and the inventory it takes commit together: a shortage saves nothing.
+  const tracked = new Set(products.filter((p) => p.trackInventory).map((p) => p.slug));
+  const save = (ref: string) =>
+    db.transaction(async (tx) => {
+      const taken = await takeForOrder(tx, ref, items, tracked);
+      await tx.insert(schema.orders).values({ ...values, items: taken, ref });
+    });
+
   let ref = newRef();
   try {
-    await db.insert(schema.orders).values({ ...values, ref });
-  } catch {
-    ref = newRef();
-    await db.insert(schema.orders).values({ ...values, ref });
+    try {
+      await save(ref);
+    } catch (e) {
+      if (e instanceof InventoryShortage) throw e;
+      // A reference clash is astronomically unlikely, but retry once rather than fail the customer.
+      ref = newRef();
+      await save(ref);
+    }
+  } catch (e) {
+    if (e instanceof InventoryShortage) {
+      return { ok: false, error: `${e.message} Please change your bag and try again.` };
+    }
+    throw e;
   }
+  // Pieces left changed, so the shop shows fresh numbers.
+  if (items.some((i) => tracked.has(i.slug))) updateTag(PRODUCTS_TAG);
 
   const text = orderMessage({
     ref,

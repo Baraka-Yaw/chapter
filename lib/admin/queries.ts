@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, desc, eq, gte, inArray, ne, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, ne, sql, sum } from "drizzle-orm";
 import { db, schema } from "../db";
 import type { OrderStatus } from "./order-status";
 
@@ -76,4 +76,33 @@ export async function listOrders(status: OrderStatus | undefined, page: number) 
 export async function getOrder(ref: string) {
   const [row] = await db.select().from(schema.orders).where(eq(schema.orders.ref, ref)).limit(1);
   return row;
+}
+
+export type InventoryMovement = typeof schema.inventoryMovements.$inferSelect;
+
+export async function getInventoryHistory(productId?: string, limit = 15) {
+  const m = schema.inventoryMovements;
+  return db
+    .select()
+    .from(m)
+    .where(productId ? eq(m.productId, productId) : undefined)
+    .orderBy(desc(m.createdAt), desc(m.id))
+    .limit(limit);
+}
+
+// Sizes of published, tracked products at or below the "running low" mark (0 = sold out).
+export async function getLowInventory(threshold: number) {
+  return db
+    .select({
+      productId: schema.products.id,
+      productName: schema.products.name,
+      colourName: schema.colourways.name,
+      size: schema.inventory.size,
+      quantity: schema.inventory.quantity,
+    })
+    .from(schema.inventory)
+    .innerJoin(schema.colourways, eq(schema.colourways.id, schema.inventory.colourwayId))
+    .innerJoin(schema.products, eq(schema.products.id, schema.colourways.productId))
+    .where(and(eq(schema.products.trackInventory, true), eq(schema.products.published, true), lte(schema.inventory.quantity, threshold)))
+    .orderBy(schema.inventory.quantity, schema.products.name);
 }

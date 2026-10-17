@@ -1,10 +1,11 @@
 "use server";
 
-import { and, eq, min, notInArray } from "drizzle-orm";
+import { and, eq, inArray, min, notInArray } from "drizzle-orm";
 import { updateTag } from "next/cache";
 import { z } from "zod";
 import { PRODUCTS_TAG, toPesewas } from "../catalog";
 import { db, schema } from "../db";
+import { applyMovement, InventoryShortage, moveOrderInventory, syncInventoryRows } from "../inventory";
 import { categories } from "../products";
 import { saveSettings as writeSettings, SETTINGS_TAG } from "../settings";
 import { settingsSchema, type ShopSettings } from "../settings-schema";
@@ -21,16 +22,33 @@ function firstIssue(error: z.ZodError): { ok: false; error: string; field?: stri
 
 // ---------- Orders ----------
 
+// Cancelling gives the order's pieces back to inventory; reopening a cancelled order takes them again.
 export async function setOrderStatus(ref: string, status: string): Promise<ActionResult> {
   await requireAdmin();
   const parsed = z.object({ ref: z.string().max(40), status: z.enum(orderStatuses) }).safeParse({ ref, status });
   if (!parsed.success) return firstIssue(parsed.error);
-  const updated = await db
-    .update(schema.orders)
-    .set({ status: parsed.data.status })
-    .where(eq(schema.orders.ref, parsed.data.ref))
-    .returning({ ref: schema.orders.ref });
-  return updated.length ? { ok: true } : { ok: false, error: "Order not found" };
+  const next = parsed.data.status;
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select({ status: schema.orders.status, items: schema.orders.items })
+        .from(schema.orders)
+        .where(eq(schema.orders.ref, parsed.data.ref))
+        .for("update");
+      if (!order) return { found: false, moved: false };
+      let moved = false;
+      if (next === "cancelled" && order.status !== "cancelled") moved = await moveOrderInventory(tx, parsed.data.ref, order.items, "cancel");
+      if (next !== "cancelled" && order.status === "cancelled") moved = await moveOrderInventory(tx, parsed.data.ref, order.items, "reopen");
+      await tx.update(schema.orders).set({ status: next }).where(eq(schema.orders.ref, parsed.data.ref));
+      return { found: true, moved };
+    });
+    if (!result.found) return { ok: false, error: "Order not found" };
+    if (result.moved) updateTag(PRODUCTS_TAG);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof InventoryShortage) return { ok: false, error: `Can't reopen this order: ${e.message}` };
+    throw e;
+  }
 }
 
 // ---------- Products ----------
@@ -67,6 +85,7 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
     sizes: p.sizes,
     featured: p.featured,
     published: p.published,
+    trackInventory: p.trackInventory,
   };
 
   const id = await db.transaction(async (tx) => {
@@ -108,6 +127,7 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
         .values({ productId, key: c.key, ...values })
         .onConflictDoUpdate({ target: [schema.colourways.productId, schema.colourways.key], set: values });
     }
+    if (p.trackInventory) await syncInventoryRows(tx, productId, p.sizes);
     return productId;
   });
 
@@ -140,6 +160,55 @@ export async function deleteProduct(id: string): Promise<ActionResult> {
   await db.delete(schema.products).where(eq(schema.products.id, id));
   updateTag(PRODUCTS_TAG);
   return { ok: true };
+}
+
+// ---------- Inventory ----------
+
+const inventoryInput = z.object({
+  productId: z.string().uuid(),
+  // "receive" adds new pieces; "count" sets what's actually on the shelf.
+  mode: z.enum(["receive", "count"]),
+  note: z.string().trim().max(200),
+  entries: z
+    .array(z.object({ colourKey: z.string().max(60), size: z.string().max(12), quantity: z.number().int().min(0).max(10_000) }))
+    .max(200),
+});
+
+export async function updateInventory(input: z.infer<typeof inventoryInput>): Promise<ActionResult<{ changed: number }>> {
+  await requireAdmin();
+  const parsed = inventoryInput.safeParse(input);
+  if (!parsed.success) return firstIssue(parsed.error);
+  const { productId, mode, note, entries } = parsed.data;
+  if (mode === "count" && !note) return { ok: false, error: "Say why the counts changed, e.g. “Stock count” or “2 damaged”.", field: "note" };
+
+  const changed = await db.transaction(async (tx) => {
+    const [product] = await tx
+      .select({ trackInventory: schema.products.trackInventory, sizes: schema.products.sizes })
+      .from(schema.products)
+      .where(eq(schema.products.id, productId));
+    if (!product?.trackInventory) return -1;
+    const cws = await tx
+      .select({ id: schema.colourways.id, key: schema.colourways.key })
+      .from(schema.colourways)
+      .where(eq(schema.colourways.productId, productId));
+    const current = await tx.select().from(schema.inventory).where(inArray(schema.inventory.colourwayId, cws.map((c) => c.id)));
+
+    let n = 0;
+    for (const e of entries) {
+      const cw = cws.find((c) => c.key === e.colourKey);
+      if (!cw || !product.sizes.includes(e.size)) continue;
+      const now = current.find((r) => r.colourwayId === cw.id && r.size === e.size)?.quantity ?? 0;
+      const change = mode === "receive" ? e.quantity : e.quantity - now;
+      if (change === 0) continue;
+      await applyMovement(tx, { colourwayId: cw.id, size: e.size, change, reason: mode === "receive" ? "restock" : "adjust", note });
+      n++;
+    }
+    return n;
+  });
+
+  if (changed === -1) return { ok: false, error: "Turn on “Track inventory” for this product first." };
+  if (changed > 0) updateTag(PRODUCTS_TAG);
+  return { ok: true, data: { changed } };
 }
 
 // ---------- Settings ----------

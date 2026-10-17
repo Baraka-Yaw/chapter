@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { Card, EmptyState, formatDate, PageHeader, StatusPill } from "@/components/admin/ui";
-import { getDashboard } from "@/lib/admin/queries";
+import { getDashboard, getLowInventory } from "@/lib/admin/queries";
 import { requireAdmin } from "@/lib/admin/session";
 import { toCedis } from "@/lib/catalog";
 import { money } from "@/lib/format";
+import { LOW_INVENTORY } from "@/lib/products";
 
 // Private per-request page; navigation may wait for the server (see the admin layout).
 export const instant = false;
 
 export default async function DashboardPage() {
   await requireAdmin();
-  const d = await getDashboard();
+  const [d, low] = await Promise.all([getDashboard(), getLowInventory(LOW_INVENTORY)]);
+  const soldOut = low.filter((l) => l.quantity === 0).length;
 
   const stats = [
     { label: "Orders this week", value: String(d.ordersThisWeek), hint: "Not counting cancelled", href: "/admin/orders" },
@@ -27,13 +29,19 @@ export default async function DashboardPage() {
       href: "/admin/orders?status=paid",
     },
     { label: "Drop-list taps", value: String(d.notifyTaps), hint: "“Notify me” in the last 7 days", href: "/admin/products" },
+    {
+      label: "Low inventory",
+      value: String(low.length),
+      hint: low.length === 0 ? "Every tracked size is in stock" : `${soldOut} sold out · ${low.length - soldOut} running low`,
+      href: "/admin/inventory?show=low",
+    },
   ];
 
   return (
     <>
       <PageHeader eyebrow="Overview" title="Dashboard" />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         {stats.map((s) => (
           <Link key={s.label} href={s.href} className="glass glass-thick block rounded-[1.5rem] p-5 transition hover:-translate-y-0.5">
             <p className="text-xs tracking-[0.18em] text-ink-soft uppercase">{s.label}</p>

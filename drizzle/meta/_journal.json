@@ -29,6 +29,13 @@
       "when": 1792241514777,
       "tag": "0003_drop_hidden",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792242493706,
+      "tag": "0004_inventory",
+      "breakpoints": true
     }
   ]
 }

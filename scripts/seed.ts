@@ -39,11 +39,12 @@ async function main() {
         sizes: p.sizes,
         featured: p.featured ?? false,
         published: true,
+        trackInventory: p.trackInventory ?? false,
         position,
         createdAt: new Date(p.createdAt),
       })
       .returning({ id: schema.products.id });
-    await db.insert(schema.colourways).values(
+    const cws = await db.insert(schema.colourways).values(
       p.colourways.map((c, i) => ({
         productId: row.id,
         key: c.id,
@@ -55,7 +56,30 @@ async function main() {
         soldOut: c.soldOut ?? false,
         position: i,
       })),
-    );
+    ).returning({ id: schema.colourways.id, key: schema.colourways.key, name: schema.colourways.name });
+
+    if (p.trackInventory) {
+      // Opening counts, recorded as received so the history starts complete.
+      for (const c of p.colourways) {
+        const cw = cws.find((r) => r.key === c.id)!;
+        for (const size of p.sizes) {
+          const quantity = c.inventory?.[size] ?? 0;
+          await db.insert(schema.inventory).values({ colourwayId: cw.id, size, quantity });
+          if (quantity > 0) {
+            await db.insert(schema.inventoryMovements).values({
+              productId: row.id,
+              productName: p.name,
+              colourName: cw.name,
+              size,
+              change: quantity,
+              quantityAfter: quantity,
+              reason: "restock",
+              note: "Opening inventory",
+            });
+          }
+        }
+      }
+    }
   }
   console.log(`Seeded ${seedProducts.length} products and default settings.`);
 }

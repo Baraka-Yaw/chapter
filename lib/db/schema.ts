@@ -1,9 +1,11 @@
-import { boolean, index, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, integer, jsonb, pgEnum, pgTable, serial, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 // Money columns are whole pesewas (GH₵1 = 100) so sums never drift.
 
 export const productStatus = pgEnum("product_status", ["available", "preorder", "coming-soon"]);
 export const orderStatus = pgEnum("order_status", ["new", "confirmed", "paid", "made", "delivered", "cancelled"]);
+export const inventoryReason = pgEnum("inventory_reason", ["order", "cancel", "reopen", "restock", "adjust"]);
 
 const timestamps = {
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -28,6 +30,8 @@ export const products = pgTable("products", {
   featured: boolean().notNull().default(false),
   // Drafts stay out of the shop and may be incomplete; publishing checks the product is ready.
   published: boolean().notNull().default(false),
+  // Count pieces per colour and size (see inventory). Off for made-to-order products with no limit.
+  trackInventory: boolean().notNull().default(false),
   position: integer().notNull().default(0),
   ...timestamps,
 });
@@ -53,6 +57,44 @@ export const colourways = pgTable(
   (t) => [unique().on(t.productId, t.key)],
 );
 
+// Pieces on hand for one colour in one size. Changed only together with an inventory_movements row.
+export const inventory = pgTable(
+  "inventory",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    colourwayId: uuid()
+      .notNull()
+      .references(() => colourways.id, { onDelete: "cascade" }),
+    size: text().notNull(),
+    quantity: integer().notNull().default(0),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [unique().on(t.colourwayId, t.size), check("inventory_quantity_not_negative", sql`${t.quantity} >= 0`)],
+);
+
+// Every inventory change and why. Names are copied so history survives deleted products.
+export const inventoryMovements = pgTable(
+  "inventory_movements",
+  {
+    id: serial().primaryKey(),
+    productId: uuid().references(() => products.id, { onDelete: "set null" }),
+    productName: text().notNull(),
+    colourName: text().notNull(),
+    size: text().notNull(),
+    change: integer().notNull(),
+    // Quantity after this change.
+    quantityAfter: integer().notNull(),
+    reason: inventoryReason().notNull(),
+    orderRef: text(),
+    note: text().notNull().default(""),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index().on(t.productId, t.createdAt), index().on(t.createdAt)],
+);
+
 export type OrderItem = {
   slug: string;
   name: string;
@@ -62,6 +104,8 @@ export type OrderItem = {
   qty: number;
   unitPesewas: number;
   preorder: boolean;
+  // Set when the order took inventory, so cancelling knows what to give back.
+  inventoryTaken?: boolean;
 };
 
 export const orders = pgTable(

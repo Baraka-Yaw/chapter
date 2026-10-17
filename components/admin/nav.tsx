@@ -10,6 +10,7 @@ const links = [
   { href: "/admin", label: "Dashboard", icon: "M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6V11h-6v9zm0-16v5h6V4h-6z" },
   { href: "/admin/orders", label: "Orders", icon: "M6 7h12l-1 13H7L6 7zm3 0V6a3 3 0 016 0v1" },
   { href: "/admin/products", label: "Products", icon: "M8 4l4 2 4-2 4 3-2 3h-2v10H8V10H6L4 7l4-3z" },
+  { href: "/admin/inventory", label: "Inventory", icon: "M4 7l8-4 8 4v10l-8 4-8-4V7zm0 0l8 4 8-4M12 11v10" },
   { href: "/admin/settings", label: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 00-2-1.2L14.5 2h-5l-.4 2.6a7.6 7.6 0 00-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2.4l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 002 1.2l.4 2.6h5l.4-2.6a7.6 7.6 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" },
 ];
 

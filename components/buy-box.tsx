@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { money } from "@/lib/format";
-import { effectivePrice, statusLabel, type Product } from "@/lib/products";
+import { colourSoldOut, effectivePrice, LOW_INVENTORY, piecesLeft, statusLabel, type Product } from "@/lib/products";
 import { brand } from "@/lib/store-config";
 import { waLink } from "@/lib/whatsapp";
 import { useCart } from "./cart";
@@ -15,7 +15,7 @@ import { trackEvent } from "./track";
 export function BuyBox({ product }: { product: Product }) {
   const { add } = useCart();
   const { whatsapp } = useShopSettings();
-  const firstInStock = product.colourways.find((c) => !c.soldOut) ?? product.colourways[0];
+  const firstInStock = product.colourways.find((c) => !colourSoldOut(product, c)) ?? product.colourways[0];
   const [colourId, setColourId] = useState(firstInStock.id);
   const [size, setSize] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
@@ -23,6 +23,18 @@ export function BuyBox({ product }: { product: Product }) {
 
   const colourway = product.colourways.find((c) => c.id === colourId) ?? firstInStock;
   const comingSoon = product.status === "coming-soon";
+  const soldOut = colourSoldOut(product, colourway);
+  // Pieces left in the chosen size (null when not tracked); caps the quantity.
+  const left = size ? piecesLeft(product, colourway, size) : null;
+  const maxQty = Math.min(20, left ?? 20);
+
+  function chooseColour(id: string) {
+    setColourId(id);
+    const next = product.colourways.find((c) => c.id === id);
+    // Keep the size only if the new colour has it.
+    if (next && size && piecesLeft(product, next, size) === 0) setSize(null);
+    setQty(1);
+  }
 
   function addToBag() {
     if (!size) {
@@ -43,7 +55,7 @@ export function BuyBox({ product }: { product: Product }) {
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setColourId(c.id)}
+                onClick={() => chooseColour(c.id)}
                 className={`overflow-hidden rounded-xl border-2 ${c.id === colourway.id ? "border-gold" : "border-transparent"}`}
                 aria-label={`Show ${c.name}`}
               >
@@ -82,8 +94,8 @@ export function BuyBox({ product }: { product: Product }) {
               <button
                 key={c.id}
                 type="button"
-                disabled={c.soldOut}
-                onClick={() => setColourId(c.id)}
+                disabled={colourSoldOut(product, c)}
+                onClick={() => chooseColour(c.id)}
                 aria-pressed={c.id === colourway.id}
                 className={`glass flex items-center gap-2 rounded-full px-3.5 py-2 text-sm ${c.id === colourway.id ? "outline-2 outline-ink" : ""} disabled:cursor-not-allowed disabled:opacity-40 disabled:line-through`}
               >
@@ -103,22 +115,32 @@ export function BuyBox({ product }: { product: Product }) {
             <Link href="/size-guide" className="text-ink-soft normal-case tracking-normal underline">Size guide</Link>
           </legend>
           <div className="mt-3 flex flex-wrap gap-2">
-            {product.sizes.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  setSize(s);
-                  setSizeError(false);
-                }}
-                aria-pressed={size === s}
-                className={`h-11 min-w-12 rounded-full px-3 text-sm transition ${size === s ? "bg-ink text-cream" : "glass"}`}
-              >
-                {s}
-              </button>
-            ))}
+            {product.sizes.map((s) => {
+              const out = piecesLeft(product, colourway, s) === 0;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={out}
+                  onClick={() => {
+                    setSize(s);
+                    setSizeError(false);
+                    setQty(1);
+                  }}
+                  aria-pressed={size === s}
+                  aria-label={out ? `${s}, sold out` : s}
+                  title={out ? "Sold out" : undefined}
+                  className={`h-11 min-w-12 rounded-full px-3 text-sm transition ${size === s ? "bg-ink text-cream" : "glass"} disabled:cursor-not-allowed disabled:opacity-35 disabled:line-through`}
+                >
+                  {s}
+                </button>
+              );
+            })}
           </div>
           {sizeError && <p className="mt-2 text-sm text-[#c8402f]">Please choose a size.</p>}
+          {left !== null && left > 0 && left <= LOW_INVENTORY && (
+            <p className="mt-2 text-sm font-medium text-[#c8402f]">Only {left} left in {size}</p>
+          )}
         </fieldset>
 
         {comingSoon ? (
@@ -133,9 +155,9 @@ export function BuyBox({ product }: { product: Product }) {
           </a>
         ) : (
           <div className="mt-8 flex gap-3">
-            <QtyStepper value={qty} onChange={(q) => setQty(Math.max(1, Math.min(20, q)))} />
-            <button type="button" onClick={addToBag} className="btn btn-dark flex-1" disabled={colourway.soldOut}>
-              {product.status === "preorder" ? "Pre-order — add to bag" : "Add to bag"}
+            <QtyStepper value={qty} max={maxQty} onChange={(q) => setQty(Math.max(1, Math.min(maxQty, q)))} />
+            <button type="button" onClick={addToBag} className="btn btn-dark flex-1" disabled={soldOut}>
+              {soldOut ? "Sold out" : product.status === "preorder" ? "Pre-order — add to bag" : "Add to bag"}
             </button>
           </div>
         )}

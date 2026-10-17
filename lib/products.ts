@@ -14,6 +14,8 @@ export type Colourway = {
   // Real photo path under /public, used instead of the art when set.
   image?: string;
   soldOut?: boolean;
+  // Pieces left per size, when the product tracks inventory.
+  inventory?: Record<string, number>;
 };
 
 export type ProductStatus = "available" | "preorder" | "coming-soon";
@@ -34,6 +36,7 @@ export type Product = {
   featured?: boolean;
   // Not published yet: admin only, never in the shop.
   draft?: boolean;
+  trackInventory?: boolean;
   createdAt: string;
 };
 
@@ -47,6 +50,25 @@ export type CategorySlug = (typeof categories)[number]["slug"];
 
 export function getCategory(slug: string) {
   return categories.find((c) => c.slug === slug);
+}
+
+// "Only 2 left" shows at or below this many pieces.
+export const LOW_INVENTORY = 2;
+
+// Pieces left in a size, or null when the product doesn't track inventory.
+export function piecesLeft(p: Product, c: Colourway, size: string): number | null {
+  if (!p.trackInventory) return null;
+  return c.inventory?.[size] ?? 0;
+}
+
+// Sold out by hand, or every size of a tracked colour is at zero.
+export function colourSoldOut(p: Product, c: Colourway) {
+  if (c.soldOut) return true;
+  return !!p.trackInventory && p.sizes.every((s) => (c.inventory?.[s] ?? 0) <= 0);
+}
+
+export function productSoldOut(p: Product) {
+  return p.colourways.length > 0 && p.colourways.every((c) => colourSoldOut(p, c));
 }
 
 export function effectivePrice(c: Colourway) {

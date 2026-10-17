@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { InventoryPanel } from "@/components/admin/inventory-panel";
 import { ProductForm } from "@/components/admin/product-form";
 import { PageHeader } from "@/components/admin/ui";
+import { getInventoryHistory } from "@/lib/admin/queries";
 import { requireAdmin, uploadsEnabled } from "@/lib/admin/session";
 import { loadAllProducts } from "@/lib/catalog";
 
@@ -16,6 +18,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
   const [{ id }, { saved }] = await Promise.all([params, searchParams]);
   const product = (await loadAllProducts()).find((p) => p.id === id);
   if (!product) notFound();
+  const history = product.trackInventory ? await getInventoryHistory(product.id, 15) : [];
 
   return (
     <>
@@ -27,6 +30,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
         title={product.name}
       />
       <ProductForm product={product} uploadsEnabled={uploadsEnabled()} />
+      {product.trackInventory && <InventoryPanel product={product} history={history} />}
     </>
   );
 }
