@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { InventoryFilters } from "@/components/admin/inventory-filters";
-import { InventoryTable } from "@/components/admin/inventory-table";
+import { InventoryProductsTable } from "@/components/admin/inventory-products-table";
 import { StartTrackingButton } from "@/components/admin/start-tracking-button";
 import { Card, EmptyState } from "@/components/admin/ui";
 import { Pagination } from "@/components/pagination";
@@ -10,7 +10,7 @@ import {
   findUntracked,
   getInventoryTotals,
   inventorySorts,
-  listInventory,
+  listInventoryProducts,
   stockLevels,
   type InventorySort,
   type StockLevel,
@@ -37,7 +37,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/admin/
 
   const [totals, list, untracked] = await Promise.all([
     getInventoryTotals(),
-    listInventory({ q, level, status, sort, page }),
+    listInventoryProducts({ q, level, status, sort, page }),
     findUntracked(q),
   ]);
   const filtered = q !== "" || level !== "all" || status !== "all";
@@ -116,7 +116,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/admin/
         <div className="space-y-3 border-b border-ink/10 p-4 sm:p-5">
           <div className="flex items-baseline justify-between">
             <h2 className="text-sm font-medium">
-              Variants <span className="text-ink-soft">({list.total})</span>
+              Products <span className="text-ink-soft">({list.total})</span>
             </h2>
             {filtered && (
               <Link href="/admin/inventory" className="text-xs text-ink-soft underline">
@@ -158,10 +158,10 @@ export default async function InventoryPage({ searchParams }: PageProps<"/admin/
             href="/admin/products"
             cta="Go to products"
           />
-        ) : list.variants.length === 0 ? (
+        ) : list.products.length === 0 ? (
           untracked.length > 0 ? null : <EmptyState title="Nothing matches" body="Try another search or clear the filters." />
         ) : (
-          <InventoryTable variants={list.variants} />
+          <InventoryProductsTable products={list.products} />
         )}
       </Card>
       <Pagination page={list.page} pageCount={list.pageCount} href={pageHref} />

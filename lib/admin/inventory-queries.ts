@@ -183,3 +183,112 @@ export async function findUntracked(q: string) {
     .orderBy(schema.products.name)
     .limit(10);
 }
+
+// ---------- One row per product ----------
+
+export type ProductStockRow = {
+  productId: string;
+  productName: string;
+  published: boolean;
+  pattern: string;
+  status: string;
+  firstPalette: [string, string, string];
+  firstImage: string | null;
+  firstColourKey: string;
+  firstColourName: string;
+  colours: number;
+  variants: number;
+  available: number;
+  reserved: number;
+  sold: number;
+  low: number;
+  out: number;
+  minPesewas: number | null;
+  maxPesewas: number | null;
+};
+
+const productOrderBy: Record<InventorySort, ReturnType<typeof sql>> = {
+  updated: sql`max(i.updated_at) desc, p.name asc`,
+  name: sql`p.name asc`,
+  "stock-asc": sql`sum(i.quantity) asc, p.name asc`,
+  "stock-desc": sql`sum(i.quantity) desc, p.name asc`,
+};
+
+// Tracked products with totals across their variants. Search matches a product when any of its
+// variants match; stock level "low"/"out" means at least one size is low/out, "in" means none are.
+export async function listInventoryProducts(f: InventoryFilters) {
+  const pageSize = f.pageSize ?? 20;
+  const page = Math.max(1, f.page ?? 1);
+  const variantFilters = where({ ...f, level: "all" });
+  const having =
+    f.level === "low"
+      ? sql`having count(*) filter (where i.quantity between 1 and ${LOW_INVENTORY}) > 0`
+      : f.level === "out"
+        ? sql`having count(*) filter (where i.quantity = 0) > 0`
+        : f.level === "in"
+          ? sql`having count(*) filter (where i.quantity <= ${LOW_INVENTORY}) = 0`
+          : sql``;
+
+  // Products with at least one matching variant; totals cover all their variants.
+  const matching = sql`
+    select distinct p.id
+    from ${schema.inventory} i
+    join ${schema.colourways} c on c.id = i.colourway_id
+    join ${schema.products} p on p.id = c.product_id
+    where ${variantFilters}
+  `;
+  const grouped = sql`
+    from ${schema.inventory} i
+    join ${schema.colourways} c on c.id = i.colourway_id
+    join ${schema.products} p on p.id = c.product_id
+    left join (${orderPieces}) op on op.slug = p.slug and op.colour_key = c.key and op.size = i.size
+    where p.id in (${matching})
+    group by p.id
+    ${having}
+  `;
+
+  const [rows, [{ total }]] = await Promise.all([
+    db.execute<Record<string, unknown>>(sql`
+      select p.id as product_id, p.name as product_name, p.published, p.pattern, p.status,
+             (array_agg(c.palette order by c.position))[1] as first_palette,
+             (array_agg(c.image order by c.position))[1] as first_image,
+             (array_agg(c.key order by c.position))[1] as first_colour_key,
+             (array_agg(c.name order by c.position))[1] as first_colour_name,
+             count(distinct c.id)::int as colours,
+             count(*)::int as variants,
+             coalesce(sum(i.quantity), 0)::int as available,
+             coalesce(sum(op.reserved), 0)::int as reserved,
+             coalesce(sum(op.sold), 0)::int as sold,
+             count(*) filter (where i.quantity between 1 and ${LOW_INVENTORY})::int as low,
+             count(*) filter (where i.quantity = 0)::int as out,
+             min(coalesce(c.sale_pesewas, c.price_pesewas)) as min_price,
+             max(coalesce(c.sale_pesewas, c.price_pesewas)) as max_price
+      ${grouped}
+      order by ${productOrderBy[f.sort ?? "name"]}
+      limit ${pageSize} offset ${(page - 1) * pageSize}
+    `),
+    db.execute<{ total: number }>(sql`select count(*)::int as total from (select p.id ${grouped}) t`),
+  ]);
+
+  const products: ProductStockRow[] = [...rows].map((r) => ({
+    productId: r.product_id as string,
+    productName: r.product_name as string,
+    published: r.published as boolean,
+    pattern: r.pattern as string,
+    status: r.status as string,
+    firstPalette: r.first_palette as [string, string, string],
+    firstImage: (r.first_image as string | null) ?? null,
+    firstColourKey: r.first_colour_key as string,
+    firstColourName: r.first_colour_name as string,
+    colours: Number(r.colours),
+    variants: Number(r.variants),
+    available: Number(r.available),
+    reserved: Number(r.reserved),
+    sold: Number(r.sold),
+    low: Number(r.low),
+    out: Number(r.out),
+    minPesewas: r.min_price == null ? null : Number(r.min_price),
+    maxPesewas: r.max_price == null ? null : Number(r.max_price),
+  }));
+  return { products, total: Number(total), page, pageCount: Math.ceil(Number(total) / pageSize) };
+}

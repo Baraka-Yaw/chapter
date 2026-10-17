@@ -9,7 +9,7 @@ import { applyMovement, InventoryShortage, moveOrderInventory, syncInventoryRows
 import { categories } from "../products";
 import { saveSettings as writeSettings, SETTINGS_TAG } from "../settings";
 import { settingsSchema, type ShopSettings } from "../settings-schema";
-import { getVariantMovements } from "./inventory-queries";
+import { getVariantMovements, listInventory } from "./inventory-queries";
 import { productInput, publishProblem, type ProductInput } from "./product-schema";
 import { orderStatuses } from "./order-status";
 import { requireAdmin } from "./session";
@@ -249,6 +249,13 @@ export async function startTracking(productId: string): Promise<ActionResult> {
   if (!done) return { ok: false, error: "Product not found" };
   updateTag(PRODUCTS_TAG);
   return { ok: true };
+}
+
+// All variants of one product, for the inventory dialog.
+export async function loadProductVariants(productId: string) {
+  await requireAdmin();
+  if (!variantId.safeParse(productId).success) return [];
+  return (await listInventory({ productId, pageSize: 500 })).variants;
 }
 
 export async function loadVariantMovements(inventoryId: string) {

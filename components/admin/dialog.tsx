@@ -13,6 +13,7 @@ export function Dialog({
   subtitle,
   children,
   footer,
+  wide = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -22,6 +23,7 @@ export function Dialog({
   subtitle?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  wide?: boolean;
 }) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
@@ -55,7 +57,7 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="glass glass-thick relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[1.75rem] outline-none"
+        className={`glass glass-thick relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-[1.75rem] outline-none ${wide ? "max-w-3xl" : "max-w-lg"}`}
       >
         <div className="flex items-start gap-3 border-b border-ink/10 px-5 py-4 sm:px-6">
           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${toneClass}`}>{icon}</span>
@@ -90,6 +92,12 @@ export const icons = {
       <circle cx="16" cy="6" r="2" />
       <circle cx="10" cy="12" r="2" />
       <circle cx="18" cy="18" r="2" />
+    </svg>
+  ),
+  variants: (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18M3 14h18M9 9v11" />
     </svg>
   ),
   history: (

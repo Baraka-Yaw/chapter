@@ -12,7 +12,7 @@ import { Dialog, icons } from "./dialog";
 import { formatDate } from "./ui";
 
 type Movement = Awaited<ReturnType<typeof loadVariantMovements>>[number];
-type Open = { kind: "restock" | "adjust" | "history"; v: VariantRow } | null;
+export type Open = { kind: "restock" | "adjust" | "history"; v: VariantRow } | null;
 
 const reasonLabel: Record<Movement["reason"], string> = {
   order: "Order placed",
@@ -117,7 +117,7 @@ function groupByProduct(variants: VariantRow[]) {
 
 // ---------- Cells ----------
 
-function Swatch({ palette }: { palette: [string, string, string] }) {
+export function Swatch({ palette }: { palette: [string, string, string] }) {
   return (
     <span
       className="inline-block h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-ink/15"
@@ -144,7 +144,7 @@ function ProductCell({ v }: { v: VariantRow }) {
   );
 }
 
-function VariantCell({ v }: { v: VariantRow }) {
+export function VariantCell({ v }: { v: VariantRow }) {
   return (
     <span className="flex items-center gap-2">
       <Swatch palette={v.palette} />
@@ -155,7 +155,7 @@ function VariantCell({ v }: { v: VariantRow }) {
   );
 }
 
-function stockState(n: number) {
+export function stockState(n: number) {
   if (n === 0) return { label: "Out of stock", number: "text-[#c8402f]", badge: "bg-[#c8402f]/10 text-[#c8402f]" };
   if (n <= LOW_INVENTORY) return { label: "Low stock", number: "text-[#c26a12]", badge: "bg-[#c26a12]/10 text-[#c26a12]" };
   return { label: "In stock", number: "text-ink", badge: "bg-[#1f7a4d]/10 text-[#1f7a4d]" };
@@ -174,7 +174,7 @@ function StockCell({ v }: { v: VariantRow }) {
   );
 }
 
-function StockCompact({ v }: { v: VariantRow }) {
+export function StockCompact({ v }: { v: VariantRow }) {
   const s = stockState(v.quantity);
   return (
     <div className="w-16 text-right">
@@ -186,7 +186,7 @@ function StockCompact({ v }: { v: VariantRow }) {
   );
 }
 
-function OrdersCell({ v }: { v: VariantRow }) {
+export function OrdersCell({ v }: { v: VariantRow }) {
   if (v.reserved === 0 && v.sold === 0) return <span className="text-xs text-ink-soft">No orders yet</span>;
   return (
     <div className="space-y-0.5 text-xs">
@@ -216,7 +216,7 @@ function PriceCell({ v }: { v: VariantRow }) {
   );
 }
 
-function Actions({ v, onOpen }: { v: VariantRow; onOpen: (o: Open) => void }) {
+export function Actions({ v, onOpen }: { v: VariantRow; onOpen: (o: Open) => void }) {
   const button = "flex h-9 w-9 items-center justify-center rounded-full text-ink-soft transition hover:bg-ink/8 hover:text-ink";
   return (
     <div className="flex justify-end gap-1">
@@ -285,7 +285,8 @@ function Summary({ rows }: { rows: [string, React.ReactNode][] }) {
   );
 }
 
-function useSave(onClose: () => void) {
+// After a save: refresh the page (and any caller-held list via onSaved), then close.
+function useSave(onClose: () => void, onSaved?: () => void) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -294,17 +295,18 @@ function useSave(onClose: () => void) {
       setError(null);
       const result = await action();
       if (!result.ok) return setError(result.error ?? "Something went wrong.");
+      onSaved?.();
       onClose();
       router.refresh();
     });
   return { error, pending, run };
 }
 
-function RestockDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
+export function RestockDialog({ v, onClose, onSaved, backLabel }: { v: VariantRow; onClose: () => void; onSaved?: () => void; backLabel?: string }) {
   const [qty, setQty] = useState("");
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
-  const { error, pending, run } = useSave(onClose);
+  const { error, pending, run } = useSave(onClose, onSaved);
   const adding = Math.max(0, Math.floor(Number(qty) || 0));
 
   return (
@@ -318,7 +320,7 @@ function RestockDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
       footer={
         <>
           <button type="button" onClick={onClose} className="btn glass px-5! py-2!">
-            Cancel
+            {backLabel ?? "Cancel"}
           </button>
           <button
             type="button"
@@ -347,11 +349,11 @@ function RestockDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
   );
 }
 
-function AdjustDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
+export function AdjustDialog({ v, onClose, onSaved, backLabel }: { v: VariantRow; onClose: () => void; onSaved?: () => void; backLabel?: string }) {
   const [type, setType] = useState<"increase" | "decrease" | "set">("decrease");
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
-  const { error, pending, run } = useSave(onClose);
+  const { error, pending, run } = useSave(onClose, onSaved);
   const n = Math.max(0, Math.floor(Number(qty) || 0));
   const next = type === "increase" ? v.quantity + n : type === "decrease" ? v.quantity - n : n;
   const types = [
@@ -371,7 +373,7 @@ function AdjustDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
       footer={
         <>
           <button type="button" onClick={onClose} className="btn glass px-5! py-2!">
-            Cancel
+            {backLabel ?? "Cancel"}
           </button>
           <button
             type="button"
@@ -418,7 +420,7 @@ function AdjustDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
   );
 }
 
-function HistoryDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
+export function HistoryDialog({ v, onClose }: { v: VariantRow; onClose: () => void }) {
   const [rows, setRows] = useState<Movement[] | null>(null);
 
   useEffect(() => {
