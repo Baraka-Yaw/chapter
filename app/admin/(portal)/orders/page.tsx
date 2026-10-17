@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Card, EmptyState, formatDate, PageHeader, StatusPill } from "@/components/admin/ui";
 import { orderStatuses, orderStatusLabel, type OrderStatus } from "@/lib/admin/order-status";
-import { getOrderCounts, listOrders } from "@/lib/admin/queries";
+import { Pagination, parsePage } from "@/components/pagination";
+import { getOrderCounts, listOrders, ORDERS_PAGE_SIZE } from "@/lib/admin/queries";
 import { requireAdmin } from "@/lib/admin/session";
 import { toCedis } from "@/lib/catalog";
 import { money } from "@/lib/format";
@@ -14,10 +15,18 @@ export const metadata: Metadata = { title: "Orders" };
 
 export default async function OrdersPage({ searchParams }: PageProps<"/admin/orders">) {
   await requireAdmin();
-  const raw = (await searchParams).status;
-  const status = orderStatuses.includes(raw as OrderStatus) ? (raw as OrderStatus) : undefined;
-  const [orders, counts] = await Promise.all([listOrders(status), getOrderCounts()]);
+  const query = await searchParams;
+  const status = orderStatuses.includes(query.status as OrderStatus) ? (query.status as OrderStatus) : undefined;
+  const counts = await getOrderCounts();
   const total = Object.values(counts).reduce((n, c) => n + (c ?? 0), 0);
+  const matching = status ? (counts[status] ?? 0) : total;
+  const pageCount = Math.ceil(matching / ORDERS_PAGE_SIZE);
+  const page = parsePage(query.page, pageCount);
+  const orders = await listOrders(status, page);
+  const pageHref = (p: number) => {
+    const qs = new URLSearchParams({ ...(status ? { status } : {}), ...(p > 1 ? { page: String(p) } : {}) }).toString();
+    return qs ? `/admin/orders?${qs}` : "/admin/orders";
+  };
 
   return (
     <>
@@ -97,6 +106,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/ord
           </>
         )}
       </Card>
+      {matching > 0 && (
+        <p className="mt-4 text-center text-xs text-ink-soft">
+          Showing {(page - 1) * ORDERS_PAGE_SIZE + 1}–{(page - 1) * ORDERS_PAGE_SIZE + orders.length} of {matching}
+        </p>
+      )}
+      <Pagination page={page} pageCount={pageCount} href={pageHref} />
     </>
   );
 }

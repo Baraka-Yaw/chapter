@@ -32,7 +32,8 @@ export type Product = {
   sizes: string[];
   colourways: Colourway[];
   featured?: boolean;
-  hidden?: boolean;
+  // Not published yet: admin only, never in the shop.
+  draft?: boolean;
   createdAt: string;
 };
 

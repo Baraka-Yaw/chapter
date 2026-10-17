@@ -59,14 +59,18 @@ export async function getOrderCounts() {
   return Object.fromEntries(rows.map((r) => [r.status, r.n])) as Partial<Record<OrderStatus, number>>;
 }
 
-export async function listOrders(status?: OrderStatus) {
+export const ORDERS_PAGE_SIZE = 20;
+
+// One page of orders, newest first. Page numbers start at 1.
+export async function listOrders(status: OrderStatus | undefined, page: number) {
   const o = schema.orders;
   return db
     .select()
     .from(o)
     .where(status ? eq(o.status, status) : undefined)
-    .orderBy(desc(o.createdAt))
-    .limit(200);
+    .orderBy(desc(o.createdAt), desc(o.id))
+    .limit(ORDERS_PAGE_SIZE)
+    .offset((page - 1) * ORDERS_PAGE_SIZE);
 }
 
 export async function getOrder(ref: string) {

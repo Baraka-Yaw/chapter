@@ -26,7 +26,8 @@ export const products = pgTable("products", {
   details: jsonb().$type<string[]>().notNull().default([]),
   sizes: jsonb().$type<string[]>().notNull().default([]),
   featured: boolean().notNull().default(false),
-  hidden: boolean().notNull().default(false),
+  // Drafts stay out of the shop and may be incomplete; publishing checks the product is ready.
+  published: boolean().notNull().default(false),
   position: integer().notNull().default(0),
   ...timestamps,
 });
@@ -41,7 +42,8 @@ export const colourways = pgTable(
     // Stable short id used in carts and URLs, e.g. "black-white".
     key: text().notNull(),
     name: text().notNull(),
-    pricePesewas: integer().notNull(),
+    // Null only on drafts, while the price isn't decided yet.
+    pricePesewas: integer(),
     salePesewas: integer(),
     palette: jsonb().$type<[string, string, string]>().notNull(),
     image: text(),

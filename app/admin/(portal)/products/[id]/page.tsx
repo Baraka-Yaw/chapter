@@ -22,7 +22,10 @@ export default async function EditProductPage({ params, searchParams }: PageProp
       <Link href="/admin/products" className="text-sm text-ink-soft hover:text-ink">
         ← All products
       </Link>
-      <PageHeader eyebrow={saved ? "Created — the shop is updated" : "Catalogue"} title={product.name} />
+      <PageHeader
+        eyebrow={saved === "published" ? "Created and published — it's live in the shop" : saved === "draft" ? "Draft saved — not visible in the shop yet" : "Catalogue"}
+        title={product.name}
+      />
       <ProductForm product={product} uploadsEnabled={uploadsEnabled()} />
     </>
   );

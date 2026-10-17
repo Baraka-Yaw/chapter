@@ -8,7 +8,7 @@ import { db, schema } from "../db";
 import { categories } from "../products";
 import { saveSettings as writeSettings, SETTINGS_TAG } from "../settings";
 import { settingsSchema, type ShopSettings } from "../settings-schema";
-import { productInput, type ProductInput } from "./product-schema";
+import { productInput, publishProblem, type ProductInput } from "./product-schema";
 import { orderStatuses } from "./order-status";
 import { requireAdmin } from "./session";
 
@@ -41,6 +41,10 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
   if (!parsed.success) return firstIssue(parsed.error);
   const p = parsed.data;
   if (!categories.some((c) => c.slug === p.category)) return { ok: false, error: "Choose a category", field: "category" };
+  if (p.published) {
+    const problem = publishProblem(p);
+    if (problem) return { ok: false, error: problem };
+  }
 
   const clash = await db
     .select({ id: schema.products.id })
@@ -62,7 +66,7 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
     details: p.details,
     sizes: p.sizes,
     featured: p.featured,
-    hidden: p.hidden,
+    published: p.published,
   };
 
   const id = await db.transaction(async (tx) => {
@@ -92,7 +96,7 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
     for (const [position, c] of p.colourways.entries()) {
       const values = {
         name: c.name,
-        pricePesewas: toPesewas(c.price),
+        pricePesewas: c.price == null ? null : toPesewas(c.price),
         salePesewas: c.salePrice == null ? null : toPesewas(c.salePrice),
         palette: c.palette,
         image: c.image,
@@ -111,10 +115,20 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
   return { ok: true, data: { id, slug: p.slug } };
 }
 
-export async function setProductHidden(id: string, hidden: boolean): Promise<ActionResult> {
+export async function setProductPublished(id: string, published: boolean): Promise<ActionResult> {
   await requireAdmin();
   if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "Product not found" };
-  await db.update(schema.products).set({ hidden }).where(eq(schema.products.id, id));
+  if (published) {
+    const [product] = await db.select({ sizes: schema.products.sizes }).from(schema.products).where(eq(schema.products.id, id));
+    if (!product) return { ok: false, error: "Product not found" };
+    const cws = await db
+      .select({ name: schema.colourways.name, price: schema.colourways.pricePesewas })
+      .from(schema.colourways)
+      .where(eq(schema.colourways.productId, id));
+    const problem = publishProblem({ sizes: product.sizes, colourways: cws });
+    if (problem) return { ok: false, error: problem };
+  }
+  await db.update(schema.products).set({ published }).where(eq(schema.products.id, id));
   updateTag(PRODUCTS_TAG);
   return { ok: true };
 }

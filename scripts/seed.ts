@@ -38,6 +38,7 @@ async function main() {
         details: p.details,
         sizes: p.sizes,
         featured: p.featured ?? false,
+        published: true,
         position,
         createdAt: new Date(p.createdAt),
       })

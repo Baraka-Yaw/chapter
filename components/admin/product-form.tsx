@@ -48,12 +48,12 @@ function fromProduct(p?: Product) {
     details: (p?.details ?? []).join("\n"),
     sizes: p?.sizes ?? ["S", "M", "L", "XL", "XXL"],
     featured: !!p?.featured,
-    hidden: !!p?.hidden,
     colourways: (p?.colourways ?? []).map<ColourState>((c) => ({
       uid: uid(),
       key: c.id,
       name: c.name,
-      price: String(c.price),
+      // 0 means a draft colour without a price yet.
+      price: c.price ? String(c.price) : "",
       salePrice: c.salePrice == null ? "" : String(c.salePrice),
       palette: c.palette,
       image: c.image ?? null,
@@ -83,6 +83,8 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
   });
   const [slugEdited, setSlugEdited] = useState(!isNew);
   const [customSize, setCustomSize] = useState("");
+  // Whether the saved product is live; changes only after a successful save.
+  const [live, setLive] = useState(!isNew && !product?.draft);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -90,7 +92,7 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
   const setColour = (id: string, patch: Partial<ColourState>) =>
     setForm((f) => ({ ...f, colourways: f.colourways.map((c) => (c.uid === id ? { ...c, ...patch } : c)) }));
 
-  function toInput(): ProductInput {
+  function toInput(published: boolean): ProductInput {
     const used = new Set(form.colourways.flatMap((c) => (c.key ? [c.key] : [])));
     return {
       id: product?.id ?? null,
@@ -104,8 +106,9 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
       details: form.details.split("\n").map((d) => d.trim()).filter(Boolean),
       sizes: form.sizes,
       featured: form.featured,
-      hidden: form.hidden,
-      colourways: form.colourways.map((c) => {
+      published,
+      // Rows left completely empty are skipped rather than saved.
+      colourways: form.colourways.filter((c) => c.name.trim() || c.price.trim() || c.image).map((c) => {
         let key = c.key;
         if (!key) {
           // New colours get a key from their name, made unique within this product.
@@ -117,7 +120,7 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
         return {
           key,
           name: c.name,
-          price: Number(c.price),
+          price: c.price.trim() === "" ? null : Number(c.price),
           salePrice: c.salePrice.trim() === "" ? null : Number(c.salePrice),
           palette: c.palette,
           image: c.image,
@@ -127,21 +130,31 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
     };
   }
 
-  function save(e: React.FormEvent) {
+  // The button pressed decides the outcome: "draft" keeps or moves the product out of the shop,
+  // "publish" puts it live (after the server checks it's complete).
+  function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const intent = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value;
+    const publish = intent === "publish";
+    if (intent === "draft" && live && !confirm("Move this product to drafts? It will disappear from the shop until you publish it again.")) return;
     setMessage(null);
     startTransition(async () => {
-      const result = await saveProduct(toInput());
+      const result = await saveProduct(toInput(publish));
       if (!result.ok) {
         setMessage({ tone: "error", text: result.error });
         return;
       }
       if (isNew) {
-        router.replace(`/admin/products/${result.data!.id}?saved=1`);
-      } else {
-        setMessage({ tone: "ok", text: "Saved. The shop is updated." });
-        router.refresh();
+        router.replace(`/admin/products/${result.data!.id}?saved=${publish ? "published" : "draft"}`);
+        return;
       }
+      setLive(publish);
+      setMessage({
+        tone: "ok",
+        text: publish ? (live ? "Saved. The shop is updated." : "Published — it's live in the shop.") : "Draft saved. It isn't visible in the shop.",
+      });
+      // Drop any "?saved=…" notice from creating the product; it no longer describes the state.
+      router.replace(`/admin/products/${product!.id}`, { scroll: false });
     });
   }
 
@@ -230,7 +243,6 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
           </p>
           <div className="flex flex-wrap gap-6 pt-2">
             <Toggle label="Featured on home page" checked={form.featured} onChange={(v) => set("featured", v)} />
-            <Toggle label="Hidden from shop" checked={form.hidden} onChange={(v) => set("hidden", v)} />
           </div>
         </Section>
 
@@ -286,10 +298,10 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
                 <div className="space-y-3">
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field label="Colour name">
-                      <input className={input} value={c.name} required maxLength={60} placeholder="e.g. Black / White" onChange={(e) => setColour(c.uid, { name: e.target.value })} />
+                      <input className={input} value={c.name} maxLength={60} placeholder="e.g. Black / White" onChange={(e) => setColour(c.uid, { name: e.target.value })} />
                     </Field>
                     <Field label="Price (GH₵)">
-                      <input className={input} type="number" inputMode="decimal" min="0.01" step="0.01" required value={c.price} onChange={(e) => setColour(c.uid, { price: e.target.value })} />
+                      <input className={input} type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="Later" value={c.price} onChange={(e) => setColour(c.uid, { price: e.target.value })} />
                     </Field>
                     <Field label="Sale price (GH₵)" hint="Optional">
                       <input className={input} type="number" inputMode="decimal" min="0.01" step="0.01" value={c.salePrice} onChange={(e) => setColour(c.uid, { salePrice: e.target.value })} />
@@ -346,10 +358,37 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
               {message.text}
             </p>
           )}
-          <button type="submit" disabled={pending} className="btn btn-dark w-full">
-            {pending ? "Saving…" : isNew ? "Create product" : "Save changes"}
-          </button>
-          {!isNew && !form.hidden && (
+          <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${live ? "bg-[#1f7a4d]/10 text-[#1f7a4d]" : "bg-gold/15 text-gold-deep"}`}>
+            <span className={`h-2 w-2 rounded-full ${live ? "bg-[#1f7a4d]" : "bg-gold"}`} />
+            {live ? "Published — live in the shop" : isNew ? "New product — not saved yet" : "Draft — not visible in the shop"}
+          </div>
+          {message && (
+            <p role={message.tone === "error" ? "alert" : "status"} className={`rounded-xl px-4 py-3 text-sm ${message.tone === "error" ? "bg-[#c8402f]/10 text-[#a5321f]" : "bg-[#1f7a4d]/10 text-[#1f7a4d]"}`}>
+              {message.text}
+            </p>
+          )}
+          {/* DOM order sets what Enter does (the first submit button): saving a draft, or saving a live product. */}
+          {live ? (
+            <div className="flex flex-col gap-2">
+              <button type="submit" name="intent" value="publish" disabled={pending} className="btn btn-dark w-full">
+                {pending ? "Saving…" : "Save changes"}
+              </button>
+              <button type="submit" name="intent" value="draft" disabled={pending} className="py-1 text-sm text-ink-soft underline">
+                Move to drafts
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <button type="submit" name="intent" value="draft" disabled={pending} className="btn glass order-2 w-full">
+                {pending ? "Saving…" : "Save draft"}
+              </button>
+              <button type="submit" name="intent" value="publish" disabled={pending} className="btn btn-dark order-1 w-full">
+                Publish
+              </button>
+              <p className="order-3 text-xs text-ink-soft">Drafts can be unfinished — prices and sizes can wait. Publishing needs a colour with a price and at least one size.</p>
+            </div>
+          )}
+          {live && (
             <Link href={`/product/${product!.slug}`} target="_blank" className="btn glass w-full">
               View in shop ↗
             </Link>

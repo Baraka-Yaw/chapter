@@ -15,6 +15,8 @@ export function SortSelect() {
         value={params.get("sort") ?? "default"}
         onChange={(e) => {
           const next = new URLSearchParams(params);
+          // A new order starts again from the first page.
+          next.delete("page");
           if (e.target.value === "default") next.delete("sort");
           else next.set("sort", e.target.value);
           const qs = next.toString();

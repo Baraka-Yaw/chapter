@@ -21,7 +21,8 @@ function toColourway(c: ColourwayRow): Colourway {
   return {
     id: c.key,
     name: c.name,
-    price: toCedis(c.pricePesewas),
+    // Only drafts can lack a price; 0 means "not set" and never reaches the shop.
+    price: c.pricePesewas == null ? 0 : toCedis(c.pricePesewas),
     salePrice: c.salePesewas == null ? undefined : toCedis(c.salePesewas),
     palette: c.palette,
     image: c.image ?? undefined,
@@ -43,7 +44,7 @@ function toProduct(p: ProductRow, cws: ColourwayRow[]): Product {
     sizes: p.sizes,
     colourways: cws.map(toColourway),
     featured: p.featured || undefined,
-    hidden: p.hidden || undefined,
+    draft: !p.published || undefined,
     createdAt: p.createdAt.toISOString().slice(0, 10),
   };
 }
@@ -60,12 +61,12 @@ export async function loadAllProducts(): Promise<Product[]> {
   return rows.map((r) => toProduct(r, byProduct.get(r.id) ?? []));
 }
 
-// What the shop shows: visible products that have at least one colourway. Cached until the admin edits.
+// What the shop shows: published products that have at least one colourway. Cached until the admin edits.
 export async function getShopProducts(): Promise<Product[]> {
   "use cache";
   cacheTag(PRODUCTS_TAG);
   const all = await loadAllProducts();
-  return all.filter((p) => !p.hidden && p.colourways.length > 0);
+  return all.filter((p) => !p.draft && p.colourways.length > 0);
 }
 
 export async function getShopProduct(slug: string) {
