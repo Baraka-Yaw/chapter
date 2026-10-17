@@ -1,7 +1,7 @@
 import { money } from "./format";
 import { brand } from "./store-config";
 
-// `number` is international format without "+", e.g. 233542343611.
+// `number` is international format without "+", e.g. 233559672901.
 export function waLink(number: string, text?: string) {
   return `https://wa.me/${number}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 }

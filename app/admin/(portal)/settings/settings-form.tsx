@@ -62,7 +62,7 @@ export function SettingsForm({ initial }: { initial: ShopSettings }) {
         <Section title="Contact" hint="Orders are sent to this WhatsApp number.">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="WhatsApp number">
-              <input className={input} type="tel" required value={s.whatsappTyped} placeholder="054 234 3611" onChange={(e) => set("whatsappTyped", e.target.value)} />
+              <input className={input} type="tel" required value={s.whatsappTyped} placeholder="055 967 2901" onChange={(e) => set("whatsappTyped", e.target.value)} />
             </Field>
             <Field label="Location">
               <input className={input} value={s.location} maxLength={60} placeholder="Accra, Ghana" onChange={(e) => set("location", e.target.value)} />

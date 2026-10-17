@@ -13,7 +13,7 @@ export const settingsSchema = z.object({
   whatsapp: z
     .string()
     .trim()
-    .regex(/^233\d{9}$/, "Use the international format without + or spaces, e.g. 233542343611"),
+    .regex(/^233\d{9}$/, "Use the international format without + or spaces, e.g. 233559672901"),
   phoneDisplay: z.string().trim().min(1, "Add the number as customers should see it").max(30),
   instagram: z.string().trim().max(40),
   tiktok: z.string().trim().max(40),
@@ -27,8 +27,8 @@ export type ShopSettings = z.infer<typeof settingsSchema>;
 export type DeliveryZone = z.infer<typeof deliveryZoneSchema>;
 
 export const defaultSettings: ShopSettings = {
-  whatsapp: "233542343611",
-  phoneDisplay: "054 234 3611",
+  whatsapp: "233559672901",
+  phoneDisplay: "055 967 2901",
   instagram: "chapterowear",
   tiktok: "chapterowear",
   location: "Accra, Ghana",
