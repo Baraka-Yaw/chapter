@@ -30,8 +30,6 @@ export const products = pgTable("products", {
   featured: boolean().notNull().default(false),
   // Drafts stay out of the shop and may be incomplete; publishing checks the product is ready.
   published: boolean().notNull().default(false),
-  // Count pieces per colour and size (see inventory). Off for made-to-order products with no limit.
-  trackInventory: boolean().notNull().default(false),
   position: integer().notNull().default(0),
   ...timestamps,
 });
@@ -57,7 +55,8 @@ export const colourways = pgTable(
   (t) => [unique().on(t.productId, t.key)],
 );
 
-// Pieces on hand for one colour in one size. Changed only together with an inventory_movements row.
+// Pieces on hand for one colour in one size (every product has one row per colour × size;
+// for pre-orders it's how many are left in the run). Changed only together with an inventory_movements row.
 export const inventory = pgTable(
   "inventory",
   {

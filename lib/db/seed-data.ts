@@ -146,7 +146,6 @@ export const seedProducts: Product[] = [
     description: "Heavyweight cotton tee — the one under every Chapter O shirt.",
     details: ["Heavyweight cotton", "Crew neck", "In stock — ready to deliver"],
     sizes: ["S", "M", "L", "XL", "XXL"],
-    trackInventory: true,
     colourways: [
       { id: "white", name: "White", price: 120, palette: ["#fbfaf7", "#fbfaf7", "#fbfaf7"], inventory: { S: 4, M: 8, L: 6, XL: 3, XXL: 1 } },
       { id: "black", name: "Black", price: 120, palette: ["#151515", "#151515", "#151515"], inventory: { S: 3, M: 6, L: 5, XL: 2, XXL: 0 } },

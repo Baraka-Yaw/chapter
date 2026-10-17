@@ -43,10 +43,9 @@ function toProduct(p: ProductRow, cws: ColourwayRow[], stock: Map<string, Record
     description: p.description,
     details: p.details,
     sizes: p.sizes,
-    colourways: cws.map((c) => toColourway(c, p.trackInventory ? (stock.get(c.id) ?? {}) : undefined)),
+    colourways: cws.map((c) => toColourway(c, stock.get(c.id) ?? {})),
     featured: p.featured || undefined,
     draft: !p.published || undefined,
-    trackInventory: p.trackInventory || undefined,
     createdAt: p.createdAt.toISOString().slice(0, 10),
   };
 }

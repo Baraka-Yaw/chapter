@@ -18,7 +18,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
   const [{ id }, { saved }] = await Promise.all([params, searchParams]);
   const product = (await loadAllProducts()).find((p) => p.id === id);
   if (!product) notFound();
-  const inventory = product.trackInventory ? await listInventory({ productId: product.id, pageSize: 200 }) : null;
+  const inventory = await listInventory({ productId: product.id, pageSize: 200 });
   const pieces = inventory?.variants.reduce((n, v) => n + v.quantity, 0) ?? 0;
 
   return (
@@ -31,7 +31,7 @@ export default async function EditProductPage({ params, searchParams }: PageProp
         title={product.name}
       />
       <ProductForm product={product} uploadsEnabled={uploadsEnabled()} />
-      {inventory && (
+      {(
         <Card className="mt-6 p-0! sm:p-0!">
           <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink/10 p-5">
             <div>

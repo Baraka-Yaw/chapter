@@ -7,7 +7,7 @@ import { getShopProducts, PRODUCTS_TAG, toCedis, toPesewas } from "./catalog";
 import { db, schema } from "./db";
 import type { OrderItem } from "./db/schema";
 import { InventoryShortage, takeForOrder } from "./inventory";
-import { effectivePrice } from "./products";
+import { effectivePrice, inventoryApplies } from "./products";
 import { getSettings } from "./settings";
 import { orderMessage, waLink } from "./whatsapp";
 
@@ -93,7 +93,8 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
   };
 
   // The order and the inventory it takes commit together: a shortage saves nothing.
-  const tracked = new Set(products.filter((p) => p.trackInventory).map((p) => p.slug));
+  // Coming-soon shirts are refused above, so every item here takes from inventory.
+  const tracked = new Set(products.filter(inventoryApplies).map((p) => p.slug));
   const save = (ref: string) =>
     db.transaction(async (tx) => {
       const taken = await takeForOrder(tx, ref, items, tracked);

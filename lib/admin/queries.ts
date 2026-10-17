@@ -78,7 +78,7 @@ export async function getOrder(ref: string) {
   return row;
 }
 
-// Sizes of published, tracked products at or below the "running low" mark (0 = sold out).
+// Sizes of published products at or below the "running low" mark (0 = sold out).
 export async function getLowInventory(threshold: number) {
   return db
     .select({
@@ -91,6 +91,7 @@ export async function getLowInventory(threshold: number) {
     .from(schema.inventory)
     .innerJoin(schema.colourways, eq(schema.colourways.id, schema.inventory.colourwayId))
     .innerJoin(schema.products, eq(schema.products.id, schema.colourways.productId))
-    .where(and(eq(schema.products.trackInventory, true), eq(schema.products.published, true), lte(schema.inventory.quantity, threshold)))
+    // Coming-soon shirts can't be ordered yet, so their counts aren't "running low".
+    .where(and(eq(schema.products.published, true), ne(schema.products.status, "coming-soon"), lte(schema.inventory.quantity, threshold)))
     .orderBy(schema.inventory.quantity, schema.products.name);
 }

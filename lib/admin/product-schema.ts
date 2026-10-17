@@ -41,7 +41,6 @@ export const productInput = z
     sizes: z.array(z.string().trim().min(1).max(12)).max(12),
     featured: z.boolean(),
     published: z.boolean(),
-    trackInventory: z.boolean(),
     colourways: z.array(colourwayInput).max(12),
   })
   .superRefine((p, ctx) => {

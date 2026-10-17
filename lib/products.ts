@@ -14,7 +14,7 @@ export type Colourway = {
   // Real photo path under /public, used instead of the art when set.
   image?: string;
   soldOut?: boolean;
-  // Pieces left per size, when the product tracks inventory.
+  // Pieces left per size.
   inventory?: Record<string, number>;
 };
 
@@ -36,7 +36,6 @@ export type Product = {
   featured?: boolean;
   // Not published yet: admin only, never in the shop.
   draft?: boolean;
-  trackInventory?: boolean;
   createdAt: string;
 };
 
@@ -55,10 +54,10 @@ export function getCategory(slug: string) {
 // "Only 2 left" shows at or below this many pieces.
 export const LOW_INVENTORY = 2;
 
-// Inventory limits what customers can buy only for released products; coming-soon shirts
-// can't be ordered yet, so their (often zero) counts must not show them as sold out.
-function inventoryApplies(p: Product) {
-  return !!p.trackInventory && p.status !== "coming-soon";
+// Every product counts inventory (for pre-orders: pieces left in the run). Coming-soon shirts
+// can't be ordered yet, so their counts must not show them as sold out.
+export function inventoryApplies(p: Product) {
+  return p.status !== "coming-soon";
 }
 
 // Pieces left in a size, or null when inventory doesn't apply.

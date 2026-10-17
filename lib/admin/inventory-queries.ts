@@ -52,7 +52,7 @@ const orderPieces = sql`
 `;
 
 function where(f: InventoryFilters) {
-  const parts = [sql`p.track_inventory = true`];
+  const parts = [sql`true`];
   if (f.productId) parts.push(sql`p.id = ${f.productId}`);
   if (f.status === "published") parts.push(sql`p.published = true`);
   if (f.status === "draft") parts.push(sql`p.published = false`);
@@ -120,7 +120,7 @@ export async function listInventory(f: InventoryFilters) {
   return { variants, total, page, pageCount: Math.ceil(total / pageSize) };
 }
 
-// Shop-wide totals for the header and stat cards (all tracked products, no filters).
+// Shop-wide totals for the header and stat cards (all products, no filters).
 export async function getInventoryTotals() {
   const [r] = await db.execute<{
     available: number;
@@ -142,7 +142,7 @@ export async function getInventoryTotals() {
     join ${schema.colourways} c on c.id = i.colourway_id
     join ${schema.products} p on p.id = c.product_id
     left join (${orderPieces}) op on op.slug = p.slug and op.colour_key = c.key and op.size = i.size
-    where p.track_inventory = true
+    where true
   `);
   return {
     available: Number(r.available),
@@ -169,19 +169,6 @@ export async function getVariantMovements(inventoryId: string, limit = 50) {
     .where(and(eq(m.colourwayId, inv.colourwayId), eq(m.size, inv.size)))
     .orderBy(desc(m.createdAt), desc(m.id))
     .limit(limit);
-}
-
-// Products that match a search but don't track inventory, so the page can offer to start.
-export async function findUntracked(q: string) {
-  const term = q.trim();
-  if (!term) return [];
-  const like = `%${term.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
-  return db
-    .select({ id: schema.products.id, name: schema.products.name, published: schema.products.published, status: schema.products.status })
-    .from(schema.products)
-    .where(and(eq(schema.products.trackInventory, false), sql`${schema.products.name} ilike ${like}`))
-    .orderBy(schema.products.name)
-    .limit(10);
 }
 
 // ---------- One row per product ----------

@@ -39,7 +39,6 @@ async function main() {
         sizes: p.sizes,
         featured: p.featured ?? false,
         published: true,
-        trackInventory: p.trackInventory ?? false,
         position,
         createdAt: new Date(p.createdAt),
       })
@@ -58,12 +57,13 @@ async function main() {
       })),
     ).returning({ id: schema.colourways.id, key: schema.colourways.key, name: schema.colourways.name });
 
-    if (p.trackInventory) {
-      // Opening counts, recorded as received so the history starts complete.
+    {
+      // Every colour × size gets a row; opening counts are recorded as received so history starts complete.
+      // Pre-orders without listed counts get a small demo run.
       for (const c of p.colourways) {
         const cw = cws.find((r) => r.key === c.id)!;
         for (const size of p.sizes) {
-          const quantity = c.inventory?.[size] ?? 0;
+          const quantity = c.inventory?.[size] ?? (p.status === "preorder" ? 5 : 0);
           await db.insert(schema.inventory).values({ colourwayId: cw.id, size, quantity });
           if (quantity > 0) {
             await db.insert(schema.inventoryMovements).values({

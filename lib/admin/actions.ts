@@ -86,7 +86,6 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
     sizes: p.sizes,
     featured: p.featured,
     published: p.published,
-    trackInventory: p.trackInventory,
   };
 
   const id = await db.transaction(async (tx) => {
@@ -128,7 +127,8 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
         .values({ productId, key: c.key, ...values })
         .onConflictDoUpdate({ target: [schema.colourways.productId, schema.colourways.key], set: values });
     }
-    if (p.trackInventory) await syncInventoryRows(tx, productId, p.sizes);
+    // Every colour × size gets an inventory row (new ones start at 0).
+    await syncInventoryRows(tx, productId, p.sizes);
     return productId;
   });
 
@@ -230,25 +230,6 @@ export async function adjustVariant(input: z.infer<typeof adjustInput>): Promise
     if (e instanceof InventoryShortage) return { ok: false, error: `You can't remove more than the ${e.available} in stock.` };
     throw e;
   }
-}
-
-// Turns on inventory for a product from the Inventory page; every colour × size starts at 0.
-export async function startTracking(productId: string): Promise<ActionResult> {
-  await requireAdmin();
-  if (!variantId.safeParse(productId).success) return { ok: false, error: "Product not found" };
-  const done = await db.transaction(async (tx) => {
-    const [p] = await tx
-      .update(schema.products)
-      .set({ trackInventory: true })
-      .where(eq(schema.products.id, productId))
-      .returning({ sizes: schema.products.sizes });
-    if (!p) return false;
-    await syncInventoryRows(tx, productId, p.sizes);
-    return true;
-  });
-  if (!done) return { ok: false, error: "Product not found" };
-  updateTag(PRODUCTS_TAG);
-  return { ok: true };
 }
 
 // All variants of one product, for the inventory dialog.

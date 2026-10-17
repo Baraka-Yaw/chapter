@@ -43,6 +43,20 @@
       "when": 1792246338364,
       "tag": "0005_movement_variant",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792253648351,
+      "tag": "0006_inventory_for_every_product",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792253648867,
+      "tag": "0007_drop_track_inventory",
+      "breakpoints": true
     }
   ]
 }

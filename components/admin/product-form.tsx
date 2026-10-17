@@ -48,7 +48,6 @@ function fromProduct(p?: Product) {
     details: (p?.details ?? []).join("\n"),
     sizes: p?.sizes ?? ["S", "M", "L", "XL", "XXL"],
     featured: !!p?.featured,
-    trackInventory: !!p?.trackInventory,
     colourways: (p?.colourways ?? []).map<ColourState>((c) => ({
       uid: uid(),
       key: c.id,
@@ -108,7 +107,6 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
       sizes: form.sizes,
       featured: form.featured,
       published,
-      trackInventory: form.trackInventory,
       // Rows left completely empty are skipped rather than saved.
       colourways: form.colourways.filter((c) => c.name.trim() || c.price.trim() || c.image).map((c) => {
         let key = c.key;
@@ -243,16 +241,16 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
             {form.status === "preorder" && "Made to order — customers are told it's ready in about 2 weeks."}
             {form.status === "coming-soon" && "Shown in Next Release. Customers can't order yet; they tap “Notify me”."}
           </p>
-          {form.trackInventory && (
+          {form.status !== "coming-soon" && (
             <p className="rounded-xl bg-gold/10 px-4 py-3 text-sm text-ink-soft">
-              Inventory is counted per colour and size. Orders take pieces automatically; sizes at 0 show as sold out.
-              {form.status === "preorder" && " For a pre-order, the count is how many you'll make in this run."}
-              {!live && isNew && " Save the product, then add pieces under Inventory."}
+              {form.status === "preorder"
+                ? "Pre-orders are a limited run: set how many you'll make of each colour and size under Inventory. Each order takes one; at 0 it shows Sold out."
+                : "Pieces are counted per colour and size under Inventory. Each order takes one; sizes at 0 show as Sold out."}
+              {isNew && " Save the product first, then add pieces."}
             </p>
           )}
           <div className="flex flex-wrap gap-6 pt-2">
             <Toggle label="Featured on home page" checked={form.featured} onChange={(v) => set("featured", v)} />
-            <Toggle label="Track inventory" checked={form.trackInventory} onChange={(v) => set("trackInventory", v)} />
           </div>
         </Section>
 
