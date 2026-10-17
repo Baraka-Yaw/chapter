@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { effectivePrice, getProduct, type Colourway, type Product } from "@/lib/products";
+import { effectivePrice, type Colourway, type Product } from "@/lib/products";
+import { lookupProducts } from "@/lib/shop-actions";
 
 export type CartItem = { slug: string; colourwayId: string; size: string; qty: number };
 
@@ -9,12 +10,14 @@ export type CartLine = CartItem & { key: string; product: Product; colourway: Co
 
 type CartContextValue = {
   lines: CartLine[];
+  // Raw saved items, for the checkout request (the server re-prices them).
+  items: CartItem[];
   count: number;
   subtotal: number;
   ready: boolean;
   open: boolean;
   setOpen: (open: boolean) => void;
-  add: (item: CartItem) => void;
+  add: (item: CartItem, product: Product) => void;
   setQty: (key: string, qty: number) => void;
   remove: (key: string) => void;
   clear: () => void;
@@ -36,14 +39,33 @@ function load(): CartItem[] {
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
+  // Product details by slug: filled when something is added, and refreshed from the server on load.
+  const [catalog, setCatalog] = useState<Record<string, Product>>({});
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     // Restore the saved bag after hydration so server and client markup match.
+    const saved = load();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setItems(load());
-    setReady(true);
+    setItems(saved);
+    const slugs = [...new Set(saved.map((i) => i.slug))];
+    if (slugs.length === 0) {
+      setReady(true);
+      return;
+    }
+    lookupProducts(slugs)
+      .then((found) => {
+        setCatalog((prev) => ({ ...prev, ...Object.fromEntries(found.map((p) => [p.slug, p])) }));
+        // Drop items whose product or colour no longer exists.
+        setItems((prev) =>
+          prev.filter((i) => found.some((p) => p.slug === i.slug && p.colourways.some((c) => c.id === i.colourwayId))),
+        );
+      })
+      .catch(() => {
+        // Offline or server error: keep the saved items; prices are checked again at checkout.
+      })
+      .finally(() => setReady(true));
   }, []);
 
   useEffect(() => {
@@ -55,10 +77,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [items, ready]);
 
-  const add = useCallback((item: CartItem) => {
+  const add = useCallback((item: CartItem, product: Product) => {
+    setCatalog((prev) => ({ ...prev, [product.slug]: product }));
     setItems((prev) => {
       const existing = prev.find((p) => keyOf(p) === keyOf(item));
-      if (existing) return prev.map((p) => (p === existing ? { ...p, qty: p.qty + item.qty } : p));
+      if (existing) return prev.map((p) => (p === existing ? { ...p, qty: Math.min(20, p.qty + item.qty) } : p));
       return [...prev, item];
     });
     setOpen(true);
@@ -72,15 +95,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clear = useCallback(() => setItems([]), []);
 
   const value = useMemo<CartContextValue>(() => {
-    // Prices come from the catalogue, never from storage, so they stay current.
     const lines = items.flatMap((item) => {
-      const product = getProduct(item.slug);
+      const product = catalog[item.slug];
       const colourway = product?.colourways.find((c) => c.id === item.colourwayId);
       if (!product || !colourway) return [];
       return [{ ...item, key: keyOf(item), product, colourway, unitPrice: effectivePrice(colourway) }];
     });
     return {
       lines,
+      items,
       count: lines.reduce((n, l) => n + l.qty, 0),
       subtotal: lines.reduce((n, l) => n + l.qty * l.unitPrice, 0),
       ready,
@@ -91,7 +114,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       remove,
       clear,
     };
-  }, [items, ready, open, add, setQty, remove, clear]);
+  }, [items, catalog, ready, open, add, setQty, remove, clear]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

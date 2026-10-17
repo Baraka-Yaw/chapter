@@ -4,14 +4,17 @@ import Link from "next/link";
 import { useState } from "react";
 import { money } from "@/lib/format";
 import { effectivePrice, statusLabel, type Product } from "@/lib/products";
-import { store } from "@/lib/store-config";
+import { brand } from "@/lib/store-config";
 import { waLink } from "@/lib/whatsapp";
 import { useCart } from "./cart";
 import { QtyStepper } from "./cart-drawer";
 import { ProductArt } from "./product-art";
+import { useShopSettings } from "./shop-settings";
+import { trackEvent } from "./track";
 
 export function BuyBox({ product }: { product: Product }) {
   const { add } = useCart();
+  const { whatsapp } = useShopSettings();
   const firstInStock = product.colourways.find((c) => !c.soldOut) ?? product.colourways[0];
   const [colourId, setColourId] = useState(firstInStock.id);
   const [size, setSize] = useState<string | null>(null);
@@ -26,7 +29,7 @@ export function BuyBox({ product }: { product: Product }) {
       setSizeError(true);
       return;
     }
-    add({ slug: product.slug, colourwayId: colourway.id, size, qty });
+    add({ slug: product.slug, colourwayId: colourway.id, size, qty }, product);
     setQty(1);
   }
 
@@ -120,7 +123,8 @@ export function BuyBox({ product }: { product: Product }) {
 
         {comingSoon ? (
           <a
-            href={waLink(`Hello ${store.name}! Please let me know when the ${product.name} (${colourway.name}) drops.`)}
+            href={waLink(whatsapp, `Hello ${brand.name}! Please let me know when the ${product.name} (${colourway.name}) drops.`)}
+            onClick={() => trackEvent("notify", product.slug)}
             target="_blank"
             rel="noopener noreferrer"
             className="btn btn-dark mt-8 w-full"
@@ -137,7 +141,7 @@ export function BuyBox({ product }: { product: Product }) {
         )}
 
         <a
-          href={waLink(`Hello ${store.name}! I have a question about the ${product.name} (${colourway.name}).`)}
+          href={waLink(whatsapp, `Hello ${brand.name}! I have a question about the ${product.name} (${colourway.name}).`)}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-3 block text-center text-sm text-ink-soft underline"

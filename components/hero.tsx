@@ -21,7 +21,7 @@ export function Hero({
   products: Product[];
 }) {
   const [main, ...rest] = products;
-  const from = Math.min(...products.map((p) => priceRange(p)[0]));
+  const from = products.length > 0 ? Math.min(...products.map((p) => priceRange(p)[0])) : null;
 
   return (
     <section className="mx-auto max-w-[1600px] px-4 pt-6 lg:px-6">
@@ -57,10 +57,12 @@ export function Hero({
               <ProductArt pattern={main.pattern} colourway={main.colourways[0]} priority className="relative mx-auto w-[78%]! bg-transparent! drop-shadow-2xl" />
             )}
             {/* Floating glass card over the shirts. */}
+            {from !== null && (
             <div className="glass-dark absolute -bottom-2 left-1/2 bg-[#1c1915]/60 w-max -translate-x-1/2 rounded-2xl px-5 py-3 text-center sm:-left-4 sm:translate-x-0">
               <p className="text-[0.65rem] tracking-[0.24em] text-[#e3c88f] uppercase">Pre-order</p>
               <p className="mt-0.5 text-sm">From {money(from)} · Ready in 2 weeks</p>
             </div>
+            )}
           </div>
         </div>
         <PrintStrip />

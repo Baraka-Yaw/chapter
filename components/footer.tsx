@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { categories } from "@/lib/products";
-import { store } from "@/lib/store-config";
+import type { ShopSettings } from "@/lib/settings-schema";
+import { brand } from "@/lib/store-config";
 import { waLink } from "@/lib/whatsapp";
 import { LogoMark } from "./logo";
 
-export function Footer() {
+export function Footer({ settings }: { settings: ShopSettings }) {
   return (
     <footer className="mt-24 bg-night text-paper">
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:grid-cols-2 lg:grid-cols-4">
@@ -14,7 +15,7 @@ export function Footer() {
             <span className="font-display tracking-[0.28em] text-gold">CHAPTER O</span>
           </div>
           <p className="text-sm leading-relaxed text-paper/70">
-            {store.tagline}. Statement shirts, made to order in {store.location}.
+            {brand.tagline}. Statement shirts, made to order{settings.location ? ` in ${settings.location}` : ""}.
           </p>
         </div>
 
@@ -44,26 +45,30 @@ export function Footer() {
           <h3 className="eyebrow mb-4 text-gold!">Contact</h3>
           <ul className="space-y-2 text-sm text-paper/80">
             <li>
-              <a href={waLink(`Hello ${store.name}!`)} target="_blank" rel="noopener noreferrer" className="hover:text-gold">
-                Call / WhatsApp {store.phoneDisplay}
+              <a href={waLink(settings.whatsapp, `Hello ${brand.name}!`)} target="_blank" rel="noopener noreferrer" className="hover:text-gold">
+                Call / WhatsApp {settings.phoneDisplay}
               </a>
             </li>
-            <li>
-              <a href={`https://instagram.com/${store.instagram}`} target="_blank" rel="noopener noreferrer" className="hover:text-gold">
-                Instagram @{store.instagram}
-              </a>
-            </li>
-            <li>
-              <a href={`https://www.tiktok.com/@${store.tiktok}`} target="_blank" rel="noopener noreferrer" className="hover:text-gold">
-                TikTok @{store.tiktok}
-              </a>
-            </li>
-            <li>{store.location}</li>
+            {settings.instagram && (
+              <li>
+                <a href={`https://instagram.com/${settings.instagram}`} target="_blank" rel="noopener noreferrer" className="hover:text-gold">
+                  Instagram @{settings.instagram}
+                </a>
+              </li>
+            )}
+            {settings.tiktok && (
+              <li>
+                <a href={`https://www.tiktok.com/@${settings.tiktok}`} target="_blank" rel="noopener noreferrer" className="hover:text-gold">
+                  TikTok @{settings.tiktok}
+                </a>
+              </li>
+            )}
+            <li>{settings.location}</li>
           </ul>
         </div>
       </div>
       <div className="border-t border-paper/10 py-5 text-center text-xs text-paper/50">
-        © {store.name}. Made with pride in Ghana.
+        © {brand.name}. Made with pride in Ghana.
       </div>
     </footer>
   );

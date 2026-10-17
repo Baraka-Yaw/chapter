@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { categories } from "@/lib/products";
-import { store } from "@/lib/store-config";
+import { brand } from "@/lib/store-config";
 import { useCart } from "./cart";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
@@ -16,10 +16,10 @@ const links = [
   { href: "/our-story", label: "Our Story" },
 ];
 
-export function AnnouncementBar() {
+export function AnnouncementBar({ text }: { text: string }) {
   return (
     <div className="bg-night px-4 py-2 text-center text-[0.7rem] tracking-[0.18em] text-paper uppercase">
-      {store.preorderNotice}
+      {text}
     </div>
   );
 }
@@ -38,7 +38,7 @@ export function Header() {
   return (
     <header className="sticky top-3 z-30 px-3">
       <div className="glass glass-thick mx-auto flex h-16 max-w-6xl items-center justify-between rounded-full pr-2 pl-5">
-        <Link href="/" aria-label={`${store.name} home`}>
+        <Link href="/" aria-label={`${brand.name} home`}>
           <Logo />
         </Link>
 

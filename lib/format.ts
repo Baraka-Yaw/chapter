@@ -1,7 +1,7 @@
-import { store } from "./store-config";
+import { brand } from "./store-config";
 
 export function money(amount: number) {
-  return `${store.currency}${amount.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${brand.currency}${amount.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function priceLabel([min, max]: [number, number]) {

@@ -1,33 +1,34 @@
 import { money } from "./format";
-import { store } from "./store-config";
+import { brand } from "./store-config";
 
-export type OrderLine = {
-  name: string;
-  colour: string;
-  size: string;
-  qty: number;
-  unitPrice: number;
-  preorder: boolean;
-};
+// `number` is international format without "+", e.g. 233542343611.
+export function waLink(number: string, text?: string) {
+  return `https://wa.me/${number}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+}
 
-export type OrderDetails = {
-  orderRef: string;
+// Ghana numbers as typed by customers (024…, +233 24…) → 233XXXXXXXXX for wa.me links.
+export function toWhatsAppNumber(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("233")) return digits;
+  if (digits.startsWith("0")) return `233${digits.slice(1)}`;
+  return digits;
+}
+
+export type OrderMessageInput = {
+  ref: string;
+  lines: { name: string; colour: string; size: string; qty: number; unitPrice: number; preorder: boolean }[];
+  subtotal: number;
+  deliveryFee: number;
+  zoneLabel: string;
   customerName: string;
   phone: string;
-  zoneLabel: string;
-  deliveryFee: number;
   address: string;
   payment: string;
   note: string;
 };
 
-export function waLink(text: string) {
-  return `https://wa.me/${store.whatsapp}?text=${encodeURIComponent(text)}`;
-}
-
-export function orderMessage(lines: OrderLine[], d: OrderDetails) {
-  const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0);
-  const items = lines
+export function orderMessage(o: OrderMessageInput) {
+  const items = o.lines
     .map(
       (l, i) =>
         `${i + 1}. ${l.name}${l.preorder ? " (pre-order)" : ""}\n   ${l.colour} · Size ${l.size} · Qty ${l.qty} · ${money(l.unitPrice * l.qty)}`,
@@ -35,28 +36,21 @@ export function orderMessage(lines: OrderLine[], d: OrderDetails) {
     .join("\n");
 
   return [
-    `Hello ${store.name}! I'd like to place an order 🛍️`,
-    `Order ref: ${d.orderRef}`,
+    `Hello ${brand.name}! I'd like to place an order 🛍️`,
+    `Order ref: ${o.ref}`,
     "",
     items,
     "",
-    `Subtotal: ${money(subtotal)}`,
-    `Delivery: ${d.zoneLabel}${d.deliveryFee ? ` (${money(d.deliveryFee)})` : ""}`,
-    `Total: ${money(subtotal + d.deliveryFee)}`,
+    `Subtotal: ${money(o.subtotal)}`,
+    `Delivery: ${o.zoneLabel}${o.deliveryFee ? ` (${money(o.deliveryFee)})` : ""}`,
+    `Total: ${money(o.subtotal + o.deliveryFee)}`,
     "",
-    `Name: ${d.customerName}`,
-    `Phone: ${d.phone}`,
-    d.address ? `Address / landmark: ${d.address}` : null,
-    `Payment: ${d.payment}`,
-    d.note ? `Note: ${d.note}` : null,
+    `Name: ${o.customerName}`,
+    `Phone: ${o.phone}`,
+    o.address ? `Address / landmark: ${o.address}` : null,
+    `Payment: ${o.payment}`,
+    o.note ? `Note: ${o.note}` : null,
   ]
     .filter((line) => line !== null)
     .join("\n");
-}
-
-export function newOrderRef() {
-  const now = new Date();
-  const date = `${now.getFullYear() % 100}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `CO-${date}-${random}`;
 }
