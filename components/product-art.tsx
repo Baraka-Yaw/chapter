@@ -3,7 +3,7 @@ import { useId } from "react";
 import type { Colourway, Pattern } from "@/lib/products";
 
 // Placeholder product picture: a shirt on a mannequin, drawn in the
-// colourway's palette. A colourway with a real `image` shows that instead.
+// colourway's palette. A colourway with photos shows its first (cover) photo instead.
 export function ProductArt({
   pattern,
   colourway,
@@ -17,10 +17,11 @@ export function ProductArt({
 }) {
   const uid = useId().replace(/:/g, "");
 
-  if (colourway.image) {
+  const photo = colourway.images?.[0];
+  if (photo) {
     return (
       <div className={`relative aspect-[5/6] overflow-hidden bg-art ${className}`}>
-        <Image src={colourway.image} alt={colourway.name} fill sizes="(max-width: 768px) 50vw, 33vw" className="object-cover" priority={priority} />
+        <Image src={photo} alt={colourway.name} fill sizes="(max-width: 768px) 50vw, 33vw" className="object-cover" priority={priority} />
       </div>
     );
   }

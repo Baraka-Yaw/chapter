@@ -63,7 +63,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
     if (!product || !colourway) return { ok: false, error: "Something in your bag is no longer available. Please remove it and try again." };
     if (product.status === "coming-soon") return { ok: false, error: `${product.name} isn't available to order yet.` };
     if (colourway.soldOut) return { ok: false, error: `${product.name} in ${colourway.name} is sold out.` };
-    if (!product.sizes.includes(i.size)) return { ok: false, error: `Please choose a size for ${product.name} again.` };
+    if (!colourway.sizes.includes(i.size)) return { ok: false, error: `Please choose a size for ${product.name} again.` };
     items.push({
       slug: product.slug,
       name: product.name,

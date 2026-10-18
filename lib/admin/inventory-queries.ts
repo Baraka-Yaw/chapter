@@ -87,10 +87,10 @@ export async function listInventory(f: InventoryFilters) {
   const [rows, [{ total }]] = await Promise.all([
     db.execute<Record<string, unknown>>(sql`
       select i.id as inventory_id, p.id as product_id, p.name as product_name, p.slug as product_slug, p.published,
-             p.pattern, c.key as colour_key, c.name as colour_name, c.palette, c.image, i.size, i.quantity,
+             p.pattern, c.key as colour_key, c.name as colour_name, c.palette, c.images->>0 as image, i.size, i.quantity,
              coalesce(op.reserved, 0) as reserved, coalesce(op.sold, 0) as sold,
              c.price_pesewas, c.sale_pesewas, i.updated_at,
-             coalesce(array_position(array(select jsonb_array_elements_text(p.sizes)), i.size), 99) as size_order
+             coalesce(array_position(array(select jsonb_array_elements_text(c.sizes)), i.size), 99) as size_order
       ${base}
       order by ${orderBy[f.sort ?? "name"]}
       limit ${pageSize} offset ${(page - 1) * pageSize}
@@ -238,7 +238,7 @@ export async function listInventoryProducts(f: InventoryFilters) {
     db.execute<Record<string, unknown>>(sql`
       select p.id as product_id, p.name as product_name, p.published, p.pattern, p.status,
              (array_agg(c.palette order by c.position))[1] as first_palette,
-             (array_agg(c.image order by c.position))[1] as first_image,
+             (array_agg(c.images->>0 order by c.position))[1] as first_image,
              (array_agg(c.key order by c.position))[1] as first_colour_key,
              (array_agg(c.name order by c.position))[1] as first_colour_name,
              count(distinct c.id)::int as colours,

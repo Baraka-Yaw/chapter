@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteProduct, saveProduct } from "@/lib/admin/actions";
 import { slugify, type ProductInput } from "@/lib/admin/product-schema";
-import { categories, statusLabel, type Pattern, type Product, type ProductStatus } from "@/lib/products";
+import { categories, sortSizes, statusLabel, type Pattern, type Product, type ProductStatus } from "@/lib/products";
 import { ProductArt } from "../product-art";
-import { PhotoInput } from "./photo-input";
+import { PhotosInput } from "./photo-input";
 
 const PRESET_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
 const PATTERNS: { id: Pattern; label: string }[] = [
@@ -21,6 +21,9 @@ const PATTERNS: { id: Pattern; label: string }[] = [
 ];
 const STATUSES: ProductStatus[] = ["available", "preorder", "coming-soon"];
 
+// One size of a colour with its stock. `original` is the saved count (null for a new size).
+type SizeState = { size: string; qty: string; original: number | null };
+
 type ColourState = {
   uid: string;
   // Existing keys never change, so saved bags and links keep working.
@@ -29,9 +32,12 @@ type ColourState = {
   price: string;
   salePrice: string;
   palette: [string, string, string];
-  image: string | null;
+  images: string[];
+  sizes: SizeState[];
   soldOut: boolean;
 };
+
+const DEFAULT_SIZES = ["S", "M", "L", "XL", "XXL"];
 
 let uidCounter = 0;
 const uid = () => `c${++uidCounter}`;
@@ -46,7 +52,6 @@ function fromProduct(p?: Product) {
     status: p?.status ?? ("available" as ProductStatus),
     description: p?.description ?? "",
     details: (p?.details ?? []).join("\n"),
-    sizes: p?.sizes ?? ["S", "M", "L", "XL", "XXL"],
     featured: !!p?.featured,
     colourways: (p?.colourways ?? []).map<ColourState>((c) => ({
       uid: uid(),
@@ -56,20 +61,26 @@ function fromProduct(p?: Product) {
       price: c.price ? String(c.price) : "",
       salePrice: c.salePrice == null ? "" : String(c.salePrice),
       palette: c.palette,
-      image: c.image ?? null,
+      images: c.images ?? [],
+      sizes: c.sizes.map((size) => {
+        const n = c.inventory?.[size] ?? 0;
+        return { size, qty: String(n), original: n };
+      }),
       soldOut: !!c.soldOut,
     })),
   };
 }
 
-const blankColour = (): ColourState => ({
+// A new colour starts with the previous colour's sizes (stock empty) so they needn't be retyped.
+const blankColour = (sizes: string[] = DEFAULT_SIZES): ColourState => ({
   uid: uid(),
   key: null,
   name: "",
   price: "",
   salePrice: "",
   palette: ["#f4f2ee", "#111111", "#b8965a"],
-  image: null,
+  images: [],
+  sizes: sizes.map((size) => ({ size, qty: "", original: null })),
   soldOut: false,
 });
 
@@ -82,7 +93,7 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
     return f;
   });
   const [slugEdited, setSlugEdited] = useState(!isNew);
-  const [customSize, setCustomSize] = useState("");
+  const [customSize, setCustomSize] = useState<Record<string, string>>({});
   // Whether the saved product is live; changes only after a successful save.
   const [live, setLive] = useState(!isNew && !product?.draft);
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -104,11 +115,10 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
       status: form.status,
       description: form.description,
       details: form.details.split("\n").map((d) => d.trim()).filter(Boolean),
-      sizes: form.sizes,
       featured: form.featured,
       published,
       // Rows left completely empty are skipped rather than saved.
-      colourways: form.colourways.filter((c) => c.name.trim() || c.price.trim() || c.image).map((c) => {
+      colourways: form.colourways.filter((c) => c.name.trim() || c.price.trim() || c.images.length).map((c) => {
         let key = c.key;
         if (!key) {
           // New colours get a key from their name, made unique within this product.
@@ -123,7 +133,8 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
           price: c.price.trim() === "" ? null : Number(c.price),
           salePrice: c.salePrice.trim() === "" ? null : Number(c.salePrice),
           palette: c.palette,
-          image: c.image,
+          images: c.images,
+          sizes: c.sizes.map((s) => ({ size: s.size, quantity: Math.max(0, Math.floor(Number(s.qty) || 0)), original: s.original })),
           soldOut: c.soldOut,
         };
       }),
@@ -138,8 +149,12 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
     const publish = intent === "publish";
     if (intent === "draft" && live && !confirm("Move this product to drafts? It will disappear from the shop until you publish it again.")) return;
     setMessage(null);
+    const input = toInput(publish);
+    // Which saved colour key each form row got (empty rows are skipped by toInput).
+    const sent = form.colourways.filter((c) => c.name.trim() || c.price.trim() || c.images.length);
+    const keys = new Map(sent.map((c, i) => [c.uid, input.colourways[i].key]));
     startTransition(async () => {
-      const result = await saveProduct(toInput(publish));
+      const result = await saveProduct(input);
       if (!result.ok) {
         setMessage({ tone: "error", text: result.error });
         return;
@@ -149,6 +164,19 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
         return;
       }
       setLive(publish);
+      // What was saved is now the baseline: new colours keep their key, and stock counts become
+      // the "original" so the next save only applies further changes.
+      setForm((f) => ({
+        ...f,
+        colourways: f.colourways.map((c) => ({
+          ...c,
+          key: c.key ?? keys.get(c.uid) ?? null,
+          sizes: c.sizes.map((s) => {
+            const n = Math.max(0, Math.floor(Number(s.qty) || 0));
+            return { ...s, qty: String(n), original: n };
+          }),
+        })),
+      }));
       setMessage({
         tone: "ok",
         text: publish ? (live ? "Saved. The shop is updated." : "Published — it's live in the shop.") : "Draft saved. It isn't visible in the shop.",
@@ -167,8 +195,28 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
     });
   }
 
-  const toggleSize = (s: string) =>
-    set("sizes", form.sizes.includes(s) ? form.sizes.filter((x) => x !== s) : sortSizes([...form.sizes, s]));
+  // Turning a size off asks first when it still has pieces, since saving removes them from inventory.
+  function toggleSize(c: ColourState, size: string) {
+    const existing = c.sizes.find((s) => s.size === size);
+    if (existing) {
+      const pieces = existing.original ?? 0;
+      if (pieces > 0 && !confirm(`Remove size ${size} from ${c.name || "this colour"}? Its ${pieces} piece${pieces === 1 ? "" : "s"} will leave inventory when you save.`)) return;
+      setColour(c.uid, { sizes: c.sizes.filter((s) => s.size !== size) });
+      return;
+    }
+    const order = sortSizes([...c.sizes.map((s) => s.size), size]);
+    const next = [...c.sizes, { size, qty: "", original: null }];
+    setColour(c.uid, { sizes: order.map((o) => next.find((s) => s.size === o)!) });
+  }
+
+  const setQty = (c: ColourState, size: string, qty: string) =>
+    setColour(c.uid, { sizes: c.sizes.map((s) => (s.size === size ? { ...s, qty } : s)) });
+
+  function addCustomSize(c: ColourState) {
+    const size = (customSize[c.uid] ?? "").trim().toUpperCase();
+    if (size && !c.sizes.some((s) => s.size === size)) toggleSize(c, size);
+    setCustomSize((v) => ({ ...v, [c.uid]: "" }));
+  }
 
   return (
     <form onSubmit={save} className="grid gap-6 xl:grid-cols-[1fr_360px]">
@@ -244,9 +292,8 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
           {form.status !== "coming-soon" && (
             <p className="rounded-xl bg-gold/10 px-4 py-3 text-sm text-ink-soft">
               {form.status === "preorder"
-                ? "Pre-orders are a limited run: set how many you'll make of each colour and size under Inventory. Each order takes one; at 0 it shows Sold out."
-                : "Pieces are counted per colour and size under Inventory. Each order takes one; sizes at 0 show as Sold out."}
-              {isNew && " Save the product first, then add pieces."}
+                ? "Pre-orders are a limited run: under each colour, enter how many you'll make of each size. Each order takes one; at 0 it shows Sold out."
+                : "Under each colour, enter how many pieces you have of each size. Each order takes one; sizes at 0 show as Sold out."}
             </p>
           )}
           <div className="flex flex-wrap gap-6 pt-2">
@@ -254,56 +301,26 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
           </div>
         </Section>
 
-        <Section title="Sizes">
-          <div className="flex flex-wrap gap-2">
-            {[...new Set([...PRESET_SIZES, ...form.sizes])].map((s) => (
-              <button
-                key={s}
-                type="button"
-                aria-pressed={form.sizes.includes(s)}
-                onClick={() => toggleSize(s)}
-                className={`h-10 min-w-12 rounded-full px-3 text-sm ${form.sizes.includes(s) ? "bg-ink text-cream" : "glass"}`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <input
-              className={`${input} max-w-40`}
-              value={customSize}
-              maxLength={12}
-              placeholder="Other size"
-              onChange={(e) => setCustomSize(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (customSize.trim()) toggleSize(customSize.trim().toUpperCase());
-                  setCustomSize("");
-                }
-              }}
-            />
+
+        <Section
+          title="Colours, sizes & stock"
+          action={
             <button
               type="button"
               className="btn glass px-4! py-2!"
-              onClick={() => {
-                if (customSize.trim()) toggleSize(customSize.trim().toUpperCase());
-                setCustomSize("");
-              }}
+              onClick={() => set("colourways", [...form.colourways, blankColour(form.colourways.at(-1)?.sizes.map((s) => s.size))])}
             >
-              Add
+              + Add colour
             </button>
-          </div>
-        </Section>
-
-        <Section title="Colours & prices" action={<button type="button" className="btn glass px-4! py-2!" onClick={() => set("colourways", [...form.colourways, blankColour()])}>+ Add colour</button>}>
+          }
+        >
           <div className="space-y-4">
             {form.colourways.map((c, i) => (
               <div key={c.uid} className="grid gap-4 rounded-2xl border border-ink/10 p-4 sm:grid-cols-[120px_1fr]">
                 <div className="w-28 overflow-hidden rounded-xl sm:w-full">
-                  <ProductArt pattern={form.pattern} colourway={{ id: c.key ?? c.uid, name: c.name || "New colour", price: 0, palette: c.palette, image: c.image ?? undefined }} />
+                  <ProductArt pattern={form.pattern} colourway={{ id: c.key ?? c.uid, name: c.name || "New colour", price: 0, palette: c.palette, sizes: [], images: c.images }} />
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-5">
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field label="Colour name">
                       <input className={input} value={c.name} maxLength={60} placeholder="e.g. Black / White" onChange={(e) => setColour(c.uid, { name: e.target.value })} />
@@ -315,8 +332,83 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
                       <input className={input} type="number" inputMode="decimal" min="0.01" step="0.01" value={c.salePrice} onChange={(e) => setColour(c.uid, { salePrice: e.target.value })} />
                     </Field>
                   </div>
-                  <PhotoInput enabled={uploadsEnabled} label={`Photo for ${c.name || `colour ${i + 1}`}`} value={c.image} onChange={(image) => setColour(c.uid, { image })} />
-                  {!c.image && (
+
+                  <div>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xs tracking-[0.16em] uppercase">Sizes &amp; stock</span>
+                      <span className="text-xs text-ink-soft tabular-nums">
+                        {c.sizes.reduce((n, s) => n + (Math.floor(Number(s.qty) || 0)), 0)} pieces
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5" aria-label={`Sizes for ${c.name || `colour ${i + 1}`}`}>
+                      {[...new Set([...PRESET_SIZES, ...c.sizes.map((s) => s.size)])].map((size) => {
+                        const on = c.sizes.some((s) => s.size === size);
+                        return (
+                          <button
+                            key={size}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => toggleSize(c, size)}
+                            className={`h-8 min-w-10 rounded-full px-2.5 text-xs transition ${on ? "bg-ink text-cream" : "glass text-ink-soft"}`}
+                          >
+                            {size}
+                          </button>
+                        );
+                      })}
+                      <span className="inline-flex items-center gap-1">
+                        <input
+                          className="glass h-8 w-20 rounded-full px-3 text-xs"
+                          value={customSize[c.uid] ?? ""}
+                          maxLength={12}
+                          placeholder="Other"
+                          aria-label="Other size"
+                          onChange={(e) => setCustomSize((v) => ({ ...v, [c.uid]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addCustomSize(c);
+                            }
+                          }}
+                        />
+                        <button type="button" onClick={() => addCustomSize(c)} className="h-8 rounded-full px-2 text-xs text-ink-soft underline">
+                          Add
+                        </button>
+                      </span>
+                    </div>
+                    {c.sizes.length === 0 ? (
+                      <p className="mt-3 text-sm text-ink-soft">Tap the sizes this colour comes in.</p>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                        {c.sizes.map((s) => {
+                          const typed = Math.floor(Number(s.qty) || 0);
+                          const diff = s.original === null ? null : typed - s.original;
+                          return (
+                            <label key={s.size} className="rounded-xl bg-ink/4 p-2 text-center">
+                              <span className="block text-xs font-medium">{s.size}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                inputMode="numeric"
+                                placeholder="0"
+                                value={s.qty}
+                                aria-label={`${c.name || "Colour"} ${s.size}: pieces in stock`}
+                                onChange={(e) => setQty(c, s.size, e.target.value)}
+                                className="glass mt-1 w-full rounded-lg px-2 py-1.5 text-center text-sm tabular-nums"
+                              />
+                              <span className={`mt-1 block text-[0.65rem] ${diff ? (diff > 0 ? "text-[#1f7a4d]" : "text-[#c8402f]") : "text-ink-soft"}`}>
+                                {s.original === null ? "new" : diff ? `${diff > 0 ? "+" : ""}${diff} on save` : "in stock"}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {!isNew && <p className="mt-2 text-xs text-ink-soft">Changes are recorded in the Inventory history.</p>}
+                  </div>
+
+                  <PhotosInput enabled={uploadsEnabled} label={c.name || `colour ${i + 1}`} value={c.images} onChange={(images) => setColour(c.uid, { images })} />
+                  {c.images.length === 0 && (
                     <div className="flex flex-wrap items-center gap-3 text-sm text-ink-soft">
                       <span>No photo yet — drawing colours:</span>
                       {c.palette.map((hex, n) => (
@@ -361,11 +453,6 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
 
       <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
         <div className="glass glass-thick space-y-3 rounded-[1.5rem] p-5">
-          {message && (
-            <p role={message.tone === "error" ? "alert" : "status"} className={`rounded-xl px-4 py-3 text-sm ${message.tone === "error" ? "bg-[#c8402f]/10 text-[#a5321f]" : "bg-[#1f7a4d]/10 text-[#1f7a4d]"}`}>
-              {message.text}
-            </p>
-          )}
           <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${live ? "bg-[#1f7a4d]/10 text-[#1f7a4d]" : "bg-gold/15 text-gold-deep"}`}>
             <span className={`h-2 w-2 rounded-full ${live ? "bg-[#1f7a4d]" : "bg-gold"}`} />
             {live ? "Published — live in the shop" : isNew ? "New product — not saved yet" : "Draft — not visible in the shop"}
@@ -393,7 +480,7 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
               <button type="submit" name="intent" value="publish" disabled={pending} className="btn btn-dark order-1 w-full">
                 Publish
               </button>
-              <p className="order-3 text-xs text-ink-soft">Drafts can be unfinished — prices and sizes can wait. Publishing needs a colour with a price and at least one size.</p>
+              <p className="order-3 text-xs text-ink-soft">Drafts can be unfinished — prices, sizes and stock can wait. Publishing needs every colour to have a price and at least one size.</p>
             </div>
           )}
           {live && (
@@ -451,15 +538,4 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       {label}
     </label>
   );
-}
-
-function sortSizes(sizes: string[]) {
-  return sizes.sort((a, b) => {
-    const ia = PRESET_SIZES.indexOf(a);
-    const ib = PRESET_SIZES.indexOf(b);
-    if (ia === -1 && ib === -1) return a.localeCompare(b, undefined, { numeric: true });
-    if (ia === -1) return 1;
-    if (ib === -1) return -1;
-    return ia - ib;
-  });
 }

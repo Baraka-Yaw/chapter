@@ -133,7 +133,7 @@ function ProductCell({ v }: { v: VariantRow }) {
       <span className="w-11 shrink-0 overflow-hidden rounded-lg">
         <ProductArt
           pattern={v.pattern as Pattern}
-          colourway={{ id: v.colourKey, name: v.colourName, price: 0, palette: v.palette, image: v.image ?? undefined }}
+          colourway={{ id: v.colourKey, name: v.colourName, price: 0, palette: v.palette, sizes: [], images: v.image ? [v.image] : undefined }}
         />
       </span>
       <span className="min-w-0">
@@ -241,7 +241,7 @@ function VariantSummary({ v }: { v: VariantRow }) {
       <span className="w-12 shrink-0 overflow-hidden rounded-lg">
         <ProductArt
           pattern={v.pattern as Pattern}
-          colourway={{ id: v.colourKey, name: v.colourName, price: 0, palette: v.palette, image: v.image ?? undefined }}
+          colourway={{ id: v.colourKey, name: v.colourName, price: 0, palette: v.palette, sizes: [], images: v.image ? [v.image] : undefined }}
         />
       </span>
       <div className="text-sm">

@@ -25,7 +25,8 @@ function toColourway(c: ColourwayRow, inventory?: Record<string, number>): Colou
     price: c.pricePesewas == null ? 0 : toCedis(c.pricePesewas),
     salePrice: c.salePesewas == null ? undefined : toCedis(c.salePesewas),
     palette: c.palette,
-    image: c.image ?? undefined,
+    sizes: c.sizes,
+    images: c.images.length ? c.images : undefined,
     soldOut: c.soldOut || undefined,
     inventory,
   };
@@ -42,7 +43,6 @@ function toProduct(p: ProductRow, cws: ColourwayRow[], stock: Map<string, Record
     status: p.status,
     description: p.description,
     details: p.details,
-    sizes: p.sizes,
     colourways: cws.map((c) => toColourway(c, stock.get(c.id) ?? {})),
     featured: p.featured || undefined,
     draft: !p.published || undefined,

@@ -19,6 +19,8 @@ export function BuyBox({ product }: { product: Product }) {
   const [colourId, setColourId] = useState(firstInStock.id);
   const [size, setSize] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
+  // Which of the colour's photos is shown large.
+  const [photo, setPhoto] = useState(0);
   const [sizeError, setSizeError] = useState(false);
 
   const colourway = product.colourways.find((c) => c.id === colourId) ?? firstInStock;
@@ -32,8 +34,9 @@ export function BuyBox({ product }: { product: Product }) {
     setColourId(id);
     const next = product.colourways.find((c) => c.id === id);
     // Keep the size only if the new colour has it.
-    if (next && size && piecesLeft(product, next, size) === 0) setSize(null);
+    if (next && size && (!next.sizes.includes(size) || piecesLeft(product, next, size) === 0)) setSize(null);
     setQty(1);
+    setPhoto(0);
   }
 
   function addToBag() {
@@ -48,8 +51,29 @@ export function BuyBox({ product }: { product: Product }) {
   return (
     <div className="grid gap-10 md:grid-cols-2">
       <div className="md:sticky md:top-24 md:self-start">
-        <ProductArt pattern={product.pattern} colourway={colourway} priority className="rounded-[1.75rem]" />
-        {product.colourways.length > 1 && (
+        <ProductArt
+          pattern={product.pattern}
+          colourway={{ ...colourway, images: colourway.images?.length ? [colourway.images[Math.min(photo, colourway.images.length - 1)]] : undefined }}
+          priority
+          className="rounded-[1.75rem]"
+        />
+        {(colourway.images?.length ?? 0) > 1 ? (
+          // This colour's photos.
+          <div className="mt-3 grid grid-cols-5 gap-2">
+            {colourway.images!.map((url, i) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => setPhoto(i)}
+                aria-label={`Show photo ${i + 1} of ${colourway.name}`}
+                aria-pressed={i === photo}
+                className={`overflow-hidden rounded-xl border-2 ${i === photo ? "border-gold" : "border-transparent"}`}
+              >
+                <ProductArt pattern={product.pattern} colourway={{ ...colourway, images: [url] }} />
+              </button>
+            ))}
+          </div>
+        ) : product.colourways.length > 1 && (
           <div className="mt-3 grid grid-cols-4 gap-2">
             {product.colourways.map((c) => (
               <button
@@ -115,7 +139,7 @@ export function BuyBox({ product }: { product: Product }) {
             <Link href="/size-guide" className="text-ink-soft normal-case tracking-normal underline">Size guide</Link>
           </legend>
           <div className="mt-3 flex flex-wrap gap-2">
-            {product.sizes.map((s) => {
+            {colourway.sizes.map((s) => {
               const out = piecesLeft(product, colourway, s) === 0;
               return (
                 <button

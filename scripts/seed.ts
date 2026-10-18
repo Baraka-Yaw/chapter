@@ -36,7 +36,6 @@ async function main() {
         status: p.status,
         description: p.description,
         details: p.details,
-        sizes: p.sizes,
         featured: p.featured ?? false,
         published: true,
         position,
@@ -51,7 +50,8 @@ async function main() {
         pricePesewas: Math.round(c.price * 100),
         salePesewas: c.salePrice == null ? null : Math.round(c.salePrice * 100),
         palette: c.palette,
-        image: c.image ?? null,
+        images: c.images ?? [],
+        sizes: c.sizes,
         soldOut: c.soldOut ?? false,
         position: i,
       })),
@@ -62,7 +62,7 @@ async function main() {
       // Pre-orders without listed counts get a small demo run.
       for (const c of p.colourways) {
         const cw = cws.find((r) => r.key === c.id)!;
-        for (const size of p.sizes) {
+        for (const size of c.sizes) {
           const quantity = c.inventory?.[size] ?? (p.status === "preorder" ? 5 : 0);
           await db.insert(schema.inventory).values({ colourwayId: cw.id, size, quantity });
           if (quantity > 0) {

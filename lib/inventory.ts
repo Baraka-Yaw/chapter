@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import type { OrderItem } from "./db/schema";
 
@@ -86,25 +86,25 @@ export async function applyMovement(
   return quantityAfter;
 }
 
-// Keeps one inventory row per colour × size of a tracked product; rows for removed sizes go.
-// (Rows for removed colours are deleted with the colour.)
-export async function syncInventoryRows(tx: Tx, productId: string, sizes: string[]) {
+// Keeps one inventory row per size of each of the product's colours; rows for removed sizes go.
+// (Rows for removed colours are deleted with the colour.) New sizes start at 0.
+export async function syncInventoryRows(tx: Tx, productId: string) {
   const cws = await tx
-    .select({ id: schema.colourways.id })
+    .select({ id: schema.colourways.id, sizes: schema.colourways.sizes })
     .from(schema.colourways)
     .where(eq(schema.colourways.productId, productId));
-  if (cws.length === 0) return;
-  const ids = cws.map((c) => c.id);
-  if (sizes.length > 0) {
-    await tx
-      .delete(schema.inventory)
-      .where(and(inArray(schema.inventory.colourwayId, ids), notInArray(schema.inventory.size, sizes)));
-    await tx
-      .insert(schema.inventory)
-      .values(ids.flatMap((colourwayId) => sizes.map((size) => ({ colourwayId, size, quantity: 0 }))))
-      .onConflictDoNothing();
-  } else {
-    await tx.delete(schema.inventory).where(inArray(schema.inventory.colourwayId, ids));
+  for (const c of cws) {
+    if (c.sizes.length > 0) {
+      await tx
+        .delete(schema.inventory)
+        .where(and(eq(schema.inventory.colourwayId, c.id), notInArray(schema.inventory.size, c.sizes)));
+      await tx
+        .insert(schema.inventory)
+        .values(c.sizes.map((size) => ({ colourwayId: c.id, size, quantity: 0 })))
+        .onConflictDoNothing();
+    } else {
+      await tx.delete(schema.inventory).where(eq(schema.inventory.colourwayId, c.id));
+    }
   }
 }
 

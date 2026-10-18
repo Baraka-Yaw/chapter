@@ -83,12 +83,13 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
     status: p.status,
     description: p.description,
     details: p.details,
-    sizes: p.sizes,
     featured: p.featured,
     published: p.published,
   };
 
-  const id = await db.transaction(async (tx) => {
+  let id: string;
+  try {
+  id = await db.transaction(async (tx) => {
     let productId = p.id;
     if (productId) {
       const updated = await tx
@@ -108,6 +109,7 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
     }
 
     // Colourways are replaced as a set: keep listed keys (updating them), drop the rest.
+    const colourIds = new Map<string, string>();
     const keys = p.colourways.map((c) => c.key);
     await tx
       .delete(schema.colourways)
@@ -118,19 +120,43 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult<{ i
         pricePesewas: c.price == null ? null : toPesewas(c.price),
         salePesewas: c.salePrice == null ? null : toPesewas(c.salePrice),
         palette: c.palette,
-        image: c.image,
+        images: c.images,
+        sizes: c.sizes.map((s) => s.size),
         soldOut: c.soldOut,
         position,
       };
-      await tx
+      const [row] = await tx
         .insert(schema.colourways)
         .values({ productId, key: c.key, ...values })
-        .onConflictDoUpdate({ target: [schema.colourways.productId, schema.colourways.key], set: values });
+        .onConflictDoUpdate({ target: [schema.colourways.productId, schema.colourways.key], set: values })
+        .returning({ id: schema.colourways.id });
+      colourIds.set(c.key, row.id);
     }
-    // Every colour × size gets an inventory row (new ones start at 0).
-    await syncInventoryRows(tx, productId, p.sizes);
+    // Every colour × size gets an inventory row (new ones start at 0), then stock typed in the
+    // form is applied as the difference from what the form was opened with.
+    await syncInventoryRows(tx, productId);
+    for (const c of p.colourways) {
+      const colourwayId = colourIds.get(c.key)!;
+      for (const s of c.sizes) {
+        const change = s.quantity - (s.original ?? 0);
+        if (change === 0) continue;
+        await applyMovement(tx, {
+          colourwayId,
+          size: s.size,
+          change,
+          reason: s.original === null ? "restock" : "adjust",
+          note: s.original === null ? "Opening stock" : "Edited in product form",
+        });
+      }
+    }
     return productId;
   });
+  } catch (e) {
+    if (e instanceof InventoryShortage) {
+      return { ok: false, error: `${e.message} Orders took pieces while you were editing; reload and try again.` };
+    }
+    throw e;
+  }
 
   updateTag(PRODUCTS_TAG);
   return { ok: true, data: { id, slug: p.slug } };
@@ -140,13 +166,11 @@ export async function setProductPublished(id: string, published: boolean): Promi
   await requireAdmin();
   if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "Product not found" };
   if (published) {
-    const [product] = await db.select({ sizes: schema.products.sizes }).from(schema.products).where(eq(schema.products.id, id));
-    if (!product) return { ok: false, error: "Product not found" };
     const cws = await db
-      .select({ name: schema.colourways.name, price: schema.colourways.pricePesewas })
+      .select({ name: schema.colourways.name, price: schema.colourways.pricePesewas, sizes: schema.colourways.sizes })
       .from(schema.colourways)
       .where(eq(schema.colourways.productId, id));
-    const problem = publishProblem({ sizes: product.sizes, colourways: cws });
+    const problem = publishProblem({ colourways: cws });
     if (problem) return { ok: false, error: problem };
   }
   await db.update(schema.products).set({ published }).where(eq(schema.products.id, id));

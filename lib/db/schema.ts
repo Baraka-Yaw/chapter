@@ -26,7 +26,6 @@ export const products = pgTable("products", {
   status: productStatus().notNull().default("available"),
   description: text().notNull().default(""),
   details: jsonb().$type<string[]>().notNull().default([]),
-  sizes: jsonb().$type<string[]>().notNull().default([]),
   featured: boolean().notNull().default(false),
   // Drafts stay out of the shop and may be incomplete; publishing checks the product is ready.
   published: boolean().notNull().default(false),
@@ -48,7 +47,10 @@ export const colourways = pgTable(
     pricePesewas: integer(),
     salePesewas: integer(),
     palette: jsonb().$type<[string, string, string]>().notNull(),
-    image: text(),
+    // Sizes this colour comes in, in display order; each has an inventory row.
+    sizes: jsonb().$type<string[]>().notNull().default([]),
+    // Up to 5 photo URLs (Vercel Blob); the first is the cover.
+    images: jsonb().$type<string[]>().notNull().default([]),
     soldOut: boolean().notNull().default(false),
     position: integer().notNull().default(0),
   },

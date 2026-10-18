@@ -11,8 +11,10 @@ export type Colourway = {
   salePrice?: number;
   // Colours for the placeholder art: [panel base, print colour, accent].
   palette: [string, string, string];
-  // Real photo path under /public, used instead of the art when set.
-  image?: string;
+  // Sizes this colour comes in, in display order.
+  sizes: string[];
+  // Photo URLs (up to 5); the first is the cover. Without photos the art is drawn.
+  images?: string[];
   soldOut?: boolean;
   // Pieces left per size.
   inventory?: Record<string, number>;
@@ -31,7 +33,6 @@ export type Product = {
   status: ProductStatus;
   description: string;
   details: string[];
-  sizes: string[];
   colourways: Colourway[];
   featured?: boolean;
   // Not published yet: admin only, never in the shop.
@@ -69,7 +70,25 @@ export function piecesLeft(p: Product, c: Colourway, size: string): number | nul
 // Sold out by hand, or every size of a tracked colour is at zero.
 export function colourSoldOut(p: Product, c: Colourway) {
   if (c.soldOut) return true;
-  return inventoryApplies(p) && p.sizes.every((s) => (c.inventory?.[s] ?? 0) <= 0);
+  return inventoryApplies(p) && c.sizes.every((s) => (c.inventory?.[s] ?? 0) <= 0);
+}
+
+// Every size across the product's colours, in a natural order (XS…XXXL, then the rest).
+export const SIZE_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+
+export function sortSizes(sizes: string[]) {
+  return [...sizes].sort((a, b) => {
+    const ia = SIZE_ORDER.indexOf(a);
+    const ib = SIZE_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b, undefined, { numeric: true });
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
+export function productSizes(p: Product) {
+  return sortSizes([...new Set(p.colourways.flatMap((c) => c.sizes))]);
 }
 
 export function productSoldOut(p: Product) {

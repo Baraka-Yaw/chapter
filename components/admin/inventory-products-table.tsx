@@ -96,7 +96,7 @@ function Thumb({ p }: { p: ProductStockRow }) {
     <span className="w-11 shrink-0 overflow-hidden rounded-lg">
       <ProductArt
         pattern={p.pattern as Pattern}
-        colourway={{ id: p.firstColourKey, name: p.firstColourName, price: 0, palette: p.firstPalette, image: p.firstImage ?? undefined }}
+        colourway={{ id: p.firstColourKey, name: p.firstColourName, price: 0, palette: p.firstPalette, sizes: [], images: p.firstImage ? [p.firstImage] : undefined }}
       />
     </span>
   );
