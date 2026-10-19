@@ -66,13 +66,15 @@ export default async function Image({ params }: { params: Promise<{ slug: string
                 color: cream,
                 borderRadius: 999,
                 padding: "18px 36px",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
                 fontSize: 26,
                 fontWeight: 700,
               }}
             >
               Order on WhatsApp
             </div>
-            <div style={{ display: "flex", fontSize: 22, color: "#5c5650" }}>{host}</div>
+            <div style={{ display: "flex", marginLeft: 24, fontSize: host.length > 22 ? 18 : 22, color: "#5c5650", whiteSpace: "nowrap" }}>{host}</div>
           </div>
         </div>
       </div>
