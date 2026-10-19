@@ -5,7 +5,9 @@ import { Suspense } from "react";
 import { BuyBox } from "@/components/buy-box";
 import { ProductCard } from "@/components/product-card";
 import { getShopProduct, getShopProducts } from "@/lib/catalog";
-import { getCategory } from "@/lib/products";
+import { getCategory, statusLabel } from "@/lib/products";
+import { shareLine } from "@/lib/share";
+import { brand } from "@/lib/store-config";
 
 export async function generateStaticParams() {
   const products = await getShopProducts();
@@ -13,9 +15,21 @@ export async function generateStaticParams() {
   return products.length > 0 ? products.map((p) => ({ slug: p.slug })) : [{ slug: "none" }];
 }
 
+// What WhatsApp, Facebook, X and others show when a product link is shared: the name with its
+// price, a short description, and the picture from opengraph-image.tsx next to this page.
 export async function generateMetadata({ params }: PageProps<"/product/[slug]">): Promise<Metadata> {
   const product = await getShopProduct((await params).slug);
-  return product ? { title: product.name, description: product.description } : { title: "Not found" };
+  if (!product) return { title: "Not found" };
+  const title = `${product.name} — ${shareLine(product)}`;
+  const description = [statusLabel[product.status], product.description].filter(Boolean).join(" · ").slice(0, 200);
+  const url = `/product/${product.slug}`;
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: { type: "website", url, title, description, siteName: brand.name, locale: "en_GH" },
+    twitter: { card: "summary_large_image", title, description },
+  };
 }
 
 // The shell renders instantly on navigation; the product streams in behind it.

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useState } from "react";
 import { money } from "@/lib/format";
 import { colourSoldOut, effectivePrice, LOW_INVENTORY, piecesLeft, statusLabel, type Product } from "@/lib/products";
+import { shareText } from "@/lib/share";
 import { brand } from "@/lib/store-config";
 import { waLink } from "@/lib/whatsapp";
 import { useCart } from "./cart";
 import { QtyStepper } from "./cart-drawer";
 import { ProductArt } from "./product-art";
+import { ShareButtons } from "./share-buttons";
 import { useShopSettings } from "./shop-settings";
 import { trackEvent } from "./track";
 
@@ -194,6 +196,8 @@ export function BuyBox({ product }: { product: Product }) {
         >
           Ask about this on WhatsApp
         </a>
+
+        <ShareButtons path={`/product/${product.slug}`} title={product.name} text={shareText(product)} className="mt-6" />
 
         <ul className="mt-8 space-y-2 border-t border-line pt-6 text-sm text-ink-soft">
           {product.details.map((d) => (

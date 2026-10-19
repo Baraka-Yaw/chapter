@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 import { Pagination, parsePage } from "@/components/pagination";
 import { ProductArt } from "@/components/product-art";
+import { CopyLinkButton } from "@/components/share-buttons";
 import { requireAdmin } from "@/lib/admin/session";
 import { loadAllProducts } from "@/lib/catalog";
 import { priceLabel } from "@/lib/format";
@@ -104,6 +105,9 @@ function ProductRow({ product: p }: { product: Product }) {
         </p>
       </div>
       <span className="hidden text-sm sm:block">{priced.length ? priceLabel(priceRange({ ...p, colourways: priced })) : "No price yet"}</span>
+      {!p.draft && (
+        <CopyLinkButton path={`/product/${p.slug}`} className="hidden shrink-0 text-xs text-ink-soft underline hover:text-ink md:block" />
+      )}
       <PublishToggle id={p.id!} published={!p.draft} />
     </li>
   );

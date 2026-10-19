@@ -6,7 +6,9 @@ import { useState, useTransition } from "react";
 import { deleteProduct, saveProduct } from "@/lib/admin/actions";
 import { slugify, type ProductInput } from "@/lib/admin/product-schema";
 import { categories, sortSizes, statusLabel, type Pattern, type Product, type ProductStatus } from "@/lib/products";
+import { shareText } from "@/lib/share";
 import { ProductArt } from "../product-art";
+import { ShareButtons } from "../share-buttons";
 import { PhotosInput } from "./photo-input";
 
 const PRESET_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
@@ -487,6 +489,12 @@ export function ProductForm({ product, uploadsEnabled }: { product?: Product; up
             <Link href={`/product/${product!.slug}`} target="_blank" className="btn glass w-full">
               View in shop ↗
             </Link>
+          )}
+          {live && (
+            <div className="rounded-2xl border border-line p-3">
+              <ShareButtons path={`/product/${product!.slug}`} title={product!.name} text={shareText(product!)} />
+              <p className="mt-2 text-xs text-ink-soft">Shared links show the photo, name, price and an “Order on WhatsApp” button.</p>
+            </div>
           )}
           {!isNew && (
             <button type="button" onClick={remove} disabled={pending} className="w-full py-2 text-sm text-[#c8402f] underline">

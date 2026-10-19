@@ -26,6 +26,21 @@ export function ProductArt({
     );
   }
 
+  return <ShirtArt pattern={pattern} colourway={colourway} uid={uid} className={className} />;
+}
+
+// The drawn shirt on its own. Hook-free, so share images can render it to an SVG file too.
+export function ShirtArt({
+  pattern,
+  colourway,
+  uid,
+  className = "",
+}: {
+  pattern: Pattern;
+  colourway: Colourway;
+  uid: string;
+  className?: string;
+}) {
   const [base, print, accent] = colourway.palette;
   const ink = "#111111";
 
