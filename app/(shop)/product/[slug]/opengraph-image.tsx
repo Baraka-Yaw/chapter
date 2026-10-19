@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
+import sharp from "sharp";
 import { ShirtArt } from "@/components/product-art";
 import { getShopProduct } from "@/lib/catalog";
 import { statusLabel, type Colourway, type Product } from "@/lib/products";
@@ -14,7 +15,9 @@ import { brand } from "@/lib/store-config";
 
 export const alt = `${brand.name} product`;
 export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+// JPEG, not PNG: WhatsApp skips previews whose image is too large, and a photo card as PNG
+// is ~750 KB. As JPEG it's well under 150 KB.
+export const contentType = "image/jpeg";
 
 // Noto Sans has the cedi sign (₵); Cinzel matches the shop's headings.
 const fontDir = join(process.cwd(), "assets/fonts");
@@ -34,7 +37,7 @@ export default async function Image({ params }: { params: Promise<{ slug: string
   const price = product ? shareLine(product) : "";
   const host = siteUrl().replace(/^https?:\/\//, "");
 
-  return new ImageResponse(
+  const png = new ImageResponse(
     (
       <div style={{ display: "flex", width: "100%", height: "100%", background: cream, fontFamily: "Noto Sans", color: ink }}>
         <div style={{ display: "flex", width: 504, height: 630, background: "#ebe4d8" }}>
@@ -88,6 +91,14 @@ export default async function Image({ params }: { params: Promise<{ slug: string
       ],
     },
   );
+  const jpeg = await sharp(Buffer.from(await png.arrayBuffer())).jpeg({ quality: 82, mozjpeg: true }).toBuffer();
+  return new Response(new Uint8Array(jpeg), {
+    headers: {
+      "content-type": contentType,
+      // Served from Vercel's CDN so link previews load fast; edits show within ~10 minutes.
+      "cache-control": "public, max-age=600, s-maxage=600, stale-while-revalidate=604800",
+    },
+  });
 }
 
 function statusLine(p: Product) {
@@ -98,8 +109,8 @@ function titleSize(name: string) {
   return name.length > 28 ? 50 : name.length > 18 ? 60 : 72;
 }
 
-// The first colour's cover photo as a data URI, or its drawn art when it has no photo
-// (or the photo is a format the image renderer can't read, like WebP).
+// The first colour's cover photo, resized to fit the card, or its drawn art when it has none
+// (or the photo can't be loaded).
 async function pictureFor(product: Product) {
   const colour = product.colourways[0];
   if (!colour) return null;
@@ -107,9 +118,13 @@ async function pictureFor(product: Product) {
   if (photo) {
     try {
       const res = await fetch(photo);
-      const type = res.headers.get("content-type") ?? "";
-      if (res.ok && /image\/(jpeg|png)/.test(type)) {
-        return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
+      if (res.ok) {
+        const fitted = await sharp(Buffer.from(await res.arrayBuffer()))
+          .rotate()
+          .resize(504, 630, { fit: "cover" })
+          .jpeg({ quality: 85 })
+          .toBuffer();
+        return `data:image/jpeg;base64,${fitted.toString("base64")}`;
       }
     } catch {
       // Fall through to the drawn art.
